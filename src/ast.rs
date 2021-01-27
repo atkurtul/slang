@@ -70,10 +70,17 @@ pub enum Expr {
     Nil,
     Literal(Literal),
     Var(Sstr),
+    
 
-    //LEAF
+    Accumulator,
+    Counter,
+    Fold,
+    
+    Cast(Ty, Box<Expr>),
+
     Binary(Binop, Box<Expr>, Box<Expr>),
     Unary(Unop, Box<Expr>),
+
     AssignOp(Binop, Box<Expr>, Box<Expr>),
     Assign(Box<Expr>, Box<Expr>),
     Subscript(Box<Expr>, Box<Expr>),
@@ -103,6 +110,7 @@ pub enum Expr {
     Extern(Vec<(Sstr, Ty)>),
     
     Func {
+        va:    Option<Sstr>,
         name:  Sstr,
         args:  Vec<Ty>,
         ret:   Ty,
@@ -246,6 +254,7 @@ impl SymbolTable {
     }
     
     pub fn add_sym(&mut self, sym: Sstr) {
+        //println!("Adding sym {:?}", sym);
         self.vars.last_mut().unwrap().insert(sym);
     }
     

@@ -64,7 +64,6 @@ Ty: Ty = {
   },
 }
 
-
 PushBinding: Binding = Binding => {
   table.add_var(&<>);
   <>
@@ -92,17 +91,17 @@ Statements: Expr = {
 
 PushIdent: Sstr = Ident => (table.add_sym(&<>), <>).1;
 
-Args0: (Option<Ty>, Vec<(Sstr, Ty)>) = {
-  "(" <s:("self" <Ty> ",")?> <a:seq1<(PushIdent Ty)>> ")" => (s, a),
-  "(" "self" <Ty> ","? ")" => (Some(<>), vec![]),
-  => (None, vec![])
+Args0: (Option<Sstr>, Option<Ty>, Vec<(Sstr, Ty)>) = {
+  "(" <s:("self" <Ty> ",")?> <a:seq0<(PushIdent Ty)>> <va:("..." <PushIdent> )?> ")" => (va, s, a),
+  "(" "self" <t:Ty> <va:("..." <PushIdent>)?> ")" => (va, Some(t), vec![]),
+  => (None, None, vec![])
 }
 
-Args: (Option<Ty>, Vec<Sstr>, Vec<Ty>) = {
+Args: (Option<Sstr>, Option<Ty>, Vec<Sstr>, Vec<Ty>) = {
   Args0 => {
-    let (this, args) = <>;
+    let (va, this, args) = <>;
     let (names, args) = args.into_iter().unzip();
-    (this, names, args)
+    (va, this, names, args)
   }
 }
 
@@ -111,15 +110,15 @@ Extern: Expr = {
   "extern"  <(Ident Ty)> ";" => Expr::Extern(vec![<>])
 }
 
-
 Generics: usize = (GenericL <seq1<Ident>> GenericR)? => table.scope_generics(<>.unwrap_or_default());
 DescopeGenerics: () = => table.descope_generics();
 
 Func: Expr = {
   Scope "fn" <name:Ident> <gen:Generics> <args:Args> <ret:("->" <Ty>)?> <body:Blockv> Descope DescopeGenerics => {
-    let (this, names, args) = args;
+    let (va, this, names, args) = args;
     let ret = ret.unwrap_or(Ty::Void);
     Expr::Func {
+      va,
       name,
       args,
       ret,
@@ -161,7 +160,6 @@ Pattern: Pattern = {
   PushBinding => Pattern::Binding(<>),
 }
 
-
 Scope: ()   = => table.scope();
 Descope: () = => table.descope();
 
@@ -171,9 +169,9 @@ Block: Expr = Blockv => Expr::Block(<>);
 
 Lambdahead: Vec<(Sstr, Option<Ty>)> = ">" <(<PushIdent> <Ty?> ",")*>;
 
-
 Expr: Expr  = {
   Logor,
+  <P<Logor>> "..." <P<Expr>> => Expr::Fold,
   <P<Logor>> ".." <P<Logor>> => Expr::Range(<>),
   Scope <Lambdahead> <P<Block>>    Descope => Expr::Lambda(<>),
   Scope <Lambdahead> ":" <P<Expr>> Descope => Expr::Lambda(<>),
@@ -200,13 +198,15 @@ Leaf: Expr = {
   "(" <Expr> ")",
   "self" => Expr::This,
   "nil" => Expr::Nil,
+  "@" => Expr::Accumulator,
+  "$" => Expr::Counter,
 }
 
 //#[inline]
 Postfix: Expr = {
   Leaf,
-  <P<Postfix>> <(GenericL <seq1<Ty>> GenericR)?> "(" <(<Expr> ",")*> ")" => Expr::Call(<>),
-  <Identp> <(GenericL <seq1<Ty>> GenericR)?> "(" <(<Expr> ",")*> ")" => Expr::FreeCall(<>),
+  <P<Postfix>> <(GenericL <seq1<Ty>> GenericR)?> "(" <seq0<Expr>> ")" => Expr::Call(<>),
+  <Identp> <(GenericL <seq1<Ty>> GenericR)?> "(" <seq0<Expr>> ")" => Expr::FreeCall(<>),
   <P<Postfix>> "." "[" <P<Expr>> "]" => Expr::Subscript(<>),
   <P<Postfix>> "." <Ident>  => Expr::Member(<>),
   <P<Postfix>> "." <Usize>  => Expr::TupleIndex(<>),
@@ -218,7 +218,7 @@ Postfix: Expr = {
 Unop: Expr = {
   <Postfix>,
   <Unops> <P<Unop>> => Expr::Unary(<>),
-  
+  ":" <Ty> <P<Unop>> => Expr::Cast(<>),
 }
 
 //#[inline]
@@ -343,6 +343,7 @@ extern {
     "." => Tok::Punct('.'),
     ":" => Tok::Punct(':'),
     "@" => Tok::Punct('@'),
+    "$" => Tok::Punct('$'),
     "=" => Tok::Punct('='),
     "^" => Tok::Punct('^'),
     "|" => Tok::Punct('|'),
@@ -381,5 +382,14 @@ seq1<T>: Vec<T> = {
     l.push(r); l
   }
 }
+
+#[inline]
+seq1wt<T>: Vec<T> = {
+  <mut l: (<T> ",")*> <r:T> => {
+    l.push(r); l
+  }
+}
+
+
 //#[inline]
 seq0<T> : Vec<T> = seq1<T>? => <>.unwrap_or_default();

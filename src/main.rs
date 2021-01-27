@@ -10,6 +10,7 @@ use memory::ptr;
 
 pub use memory::defo;
 
+
 pub type Sstr = &'static str;
 
 macro_rules! mkstr {
@@ -20,14 +21,13 @@ macro_rules! mkstr {
 
 fn main() {
   let allocator = Bump::new();
-
   let (src, file) = ast::parse_file("src/slang.sl");
   let top = lower::Context::begin(ptr(&allocator), file);
   use lower::Expr::*;
   for prog in top.nodes {
     match &prog.ex {
       lower::Expr::Ctx(c) => {
-        for (id, var) in c.vars.iter() {
+        for (id, var) in c.vars.vars.iter() {
           for (i, var) in var.into_iter().enumerate() {
             println!("{}{} {:?}", id, i, var.ty);
           }
@@ -38,3 +38,5 @@ fn main() {
     };
   }
 }
+
+

@@ -4,8 +4,10 @@ use crate::memory::*;
 use crate::*;
 use fxhash::FxHashMap;
 use fxhash::FxHashSet;
+
 pub type Map<K,V> = FxHashMap<K,V>;
 pub type Set<K> = FxHashSet<K>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
   Void,
@@ -53,11 +55,17 @@ pub enum Expr {
   This,
   Nil,
   Arg,
+  Va,
   Literal(Literal),
   Var(Sstr, ptr<Node>),
 
+  Cast(Ty, ptr<Node>),
+  Accumulator,
+  Counter,
+
   Binary(Binop, ptr<Node>, ptr<Node>),
   Unary(Unop, ptr<Node>),
+
   AssignOp(Binop, ptr<Node>, ptr<Node>),
   Assign(ptr<Node>, ptr<Node>),
   Subscript(ptr<Node>, ptr<Node>),
@@ -178,7 +186,7 @@ impl Debug for TypeVariable {
   }
 }
 
-use std::hash::{Hash, Hasher};
+use std::{hash::{Hash, Hasher}, unreachable};
 
 impl Hash for Node {
   fn hash<H>(&self, h: &mut H)
@@ -214,16 +222,49 @@ impl PartialEq<Self> for TypeVariable {
   }
 }
 
-#[derive(Debug, Clone)]
+impl Default for ptr<Bump> {
+  fn default() -> Self {
+      ptr(0 as _)
+  }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct VarStack {
+  pub up:   Option<ptr<VarStack>>,
+  pub down: Vec<Box<VarStack>>,
+  pub vars: Map<Sstr, Vec<ptr<Node>>>,
+}
+
+impl VarStack {
+  pub fn root() -> Self {
+    defo()
+  }
+
+  pub fn get(&self, n: Sstr) -> Option<ptr<Node>> {
+    //println!("Getting {:?}", n);
+    if let Some(v) = self.vars.get(n) {
+      Some(*v.last().unwrap())
+    } else {
+      self.up.map(|s| s.get(n)).unwrap_or(None)
+    }
+  }
+
+  pub fn insert(&mut self, n: Sstr, x: ptr<Node>) {
+    self.vars.entry(n).or_default().push(x);
+  }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Context {
   pub bumper: ptr<Bump>,
   pub name: Sstr,
   pub this: Option<Ty>,
   pub gen: usize,
+  pub va: Option<Sstr>,
   pub args: Box<[Ty]>,
   pub ret: Ty,
   pub names: Vec<Sstr>,
-  pub vars: Map<Sstr, Vec<ptr<Node>>>,
+  pub vars: VarStack,
   pub labels: Vec<Sstr>,
   pub children: Map<Sstr, Box<Context>>,
   pub assoc_children: Map<Sstr, Vec<Box<Context>>>,
@@ -231,6 +272,7 @@ pub struct Context {
   pub nodes: Vec<ptr<Node>>,
   pub records: Map<Sstr, Box<Adt>>,
 }
+
 
 #[derive(Debug, Clone)]
 pub struct Adt {
@@ -246,19 +288,7 @@ impl Context {
   pub fn new(bumper: ptr<Bump>) -> Context {
     Context {
       bumper,
-      vars: defo(),
-      labels: defo(),
-      name: defo(),
-      this: defo(),
-      gen: defo(),
-      args: defo(),
-      ret: defo(),
-      names: defo(),
-      children: defo(),
-      assoc_children: defo(),
-      parent: defo(),
-      nodes: defo(),
-      records: defo(),
+      ..defo()
     }
   }
 
@@ -282,14 +312,18 @@ impl Context {
 
   fn find_var(&mut self, n: Sstr) -> ptr<Node> {
     if let Some(node) = self.vars.get(n) {
-      *node.last().unwrap()
+      //*node.last().unwrap()
+      node
     } else {
       for (i,s) in self.names.iter().enumerate() {
         if *s==n {
           return self.new_node(Some(self.args[i].clone()), Expr::Arg);
         }
       }
-      unreachable!()
+      if Some(n) == self.va {
+        return self.new_node(None, Expr::Va);
+      }
+      unreachable!("Cant find var {:?}", n);
     }
   }
 
@@ -297,6 +331,7 @@ impl Context {
     for x in x.iter() {
       match x {
         ast::Expr::Func {
+          va,
           body, //Box<Expr>
           name, //Sstr,
           this, //Option<Ty>,
@@ -308,6 +343,7 @@ impl Context {
           let mut ctx = Box::new(Context {
             bumper: self.bumper,
             name,
+            va: *va,
             gen: *gen,
             names: names.clone(),
             parent: Some(ptr(self)),
@@ -377,7 +413,7 @@ impl Context {
     match var {
       Binding::Ignore => (),
       Binding::Ident(s) => {
-        self.vars.entry(s).or_default().push(x);
+        self.vars.insert(s, x);
       }
       Binding::Tuple(v) => {
         for (i, var) in v.into_iter().enumerate() {
@@ -429,6 +465,29 @@ impl Context {
         let x = self.new_node(None, Expr::Unary(op, l));
         unify(x, l);
         x
+      }
+
+      ast::Expr::Cast(t, x) => {
+        let t = Ty::from(t);
+        let l = self.lowerb(x);
+        let x = self.new_node(Some(t.clone()), Expr::Cast(t, l));
+        x
+      }
+
+      ast::Expr::Fold => {
+        self.new_node(None, Expr::Accumulator)
+      }
+
+      ast::Expr::Accumulator => {
+        // let l = self.lowerb(x);
+        // let x = self.new_node(None, Expr::Accumulator(l));
+        // unify(x, l);
+        // x
+        self.new_node(None, Expr::Accumulator)
+      }
+
+      ast::Expr::Counter => {
+        self.new_node(Some(Ty::Prim(Prim::Long)), Expr::Counter)
       }
 
       ast::Expr::AssignOp(op, l, r) => {
@@ -559,7 +618,11 @@ impl Context {
       
       ast::Expr::Jmp(..) => unreachable!(),
       
-      ast::Expr::For(..) => unreachable!(),
+      ast::Expr::For(v, x, b) => {
+        let x = self.lowerb(x);
+
+        self.new_node(Some(Ty::Void), Expr::For)
+      }
       
       ast::Expr::Let(v, t, x) => {
         let x = self.lowerb(x);
@@ -576,6 +639,7 @@ impl Context {
       }
 
       ast::Expr::Func {
+        va,
         body, //Box<Expr>
         name, //Sstr,
         this, //Option<Ty>,
@@ -584,7 +648,14 @@ impl Context {
         ret,  //Ty,
         names, //Vec<Sstr>,
       } => {
-        let ctx = self.children.get_mut(name).unwrap();
+        
+        let ctx = if let Some(ctx) = self.children.get_mut(name) {
+          ctx
+        } else {
+          let this = this.map(|t| Ty::from(t));
+          self.assoc_children.get_mut(name).unwrap().iter_mut().find(|ctx| ctx.this == this).unwrap()
+        };
+
         ctx.lowerv_as_root(body);
         let expr = Expr::Ctx(ptr(ctx.as_ref()));
         self.new_node(Some(Ty::Void), expr)

@@ -75,7 +75,7 @@ Tok: Tok = {
  "while" => Tok::Kwwhile,
  "for" => Tok::Kwfor,
  "in" => Tok::Kwin,
- r"[{}()\[\];,.@:$_=&|\^%<>!*+-/~?']" => Tok::Punct(<>.chars().nth(0).unwrap()),
+ r"[{}()\[\];,.@:\$_=&|\^%<>!*+-/~?']" => Tok::Punct(<>.chars().nth(0).unwrap()),
 }
 
 Str: Sstr = { 
