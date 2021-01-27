@@ -5,7 +5,6 @@ fn func -> long {
 
 
 fn binary_func[T](a T, b T) -> T {
-
   ret :T a;
 }
 
