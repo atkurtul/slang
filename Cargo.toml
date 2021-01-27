@@ -1,5 +1,5 @@
 [package]
-name = "ast"
+name = "slang"
 version = "0.1.0"
 authors = ["atil"]
 edition = "2018"
