@@ -1,0 +1,124 @@
+use crate::lexer::*;
+grammar(pos: &mut [usize]);
+
+pub Token: Vec<(Loc, Tok, Loc)> = {
+ <(Lines* <(Loc Tok Loc)>)*> Lines*,
+}
+
+Loc: Loc = {
+ <l:@L> => Loc::new(pos, l)
+}
+
+Lines: () = {
+  newline <r:@R> => {
+    pos[0] += 1;
+    pos[1] = r;
+  },
+  <cc:comment> <r:@R> => {
+    pos[0] += cc.matches("\n").count();
+    pos[1] = r;
+  }
+}
+
+ops: Binop = {
+ ">="  => Binop::Ge,
+ "<="  => Binop::Le,
+ ">>"  => Binop::Shr,
+ "<<"  => Binop::Shl,
+ "=="  => Binop::Eq,
+ "!="  => Binop::Neq,
+ "and" => Binop::Logand,
+ "or"  => Binop::Logor,
+}
+
+assignops: Binop = {
+ "*="  => Binop::Mul,
+ "/="  => Binop::Div,
+ "+="  => Binop::Add,
+ "-="  => Binop::Sub,
+ "<<=" => Binop::Shl,
+ ">>=" => Binop::Shr,
+ "&="  => Binop::Add,
+ "|="  => Binop::Or,
+ "^="  => Binop::Xor,
+}
+
+Tok: Tok = {
+ ops => Tok::Ops(<>),
+ assignops => Tok::Assignops(<>),
+ Prim => Tok::Prim(<>),
+ Int => Tok::Int(<>),
+ Real => Tok::Real(<>),
+ Str => Tok::Str(<>),
+ Ident => Tok::Ident(<>),
+ "::" => Tok::Turbo,
+ "++" => Tok::Inc,
+ "--" => Tok::Dec,
+ "_" => Tok::Wildcard,
+ "->" => Tok::Arrow,
+ ".." => Tok::Dotdot,
+ "..." => Tok::Elipsis,
+ "=>" => Tok::FatArrow,
+ "extern" => Tok::Kwextern,
+ "self" => Tok::Kwself,
+ "nil" => Tok::Kwnil,
+ "type" => Tok::Kwty,
+ "enum" => Tok::Kwenum, 
+ "fn" => Tok::Kwfn,
+ "let" => Tok::Kwlet,
+ "ret" => Tok::Kwret,
+ "else" => Tok::Kwelse,
+ "if" => Tok::Kwif,
+ "jmp" => Tok::Kwjump,
+ "brk" => Tok::Kwbrk,
+ "loop" => Tok::Kwloop,
+ "while" => Tok::Kwwhile,
+ "for" => Tok::Kwfor,
+ "in" => Tok::Kwin,
+ r"[{}()\[\];,.@:$_=&|\^%<>!*+-/~?']" => Tok::Punct(<>.chars().nth(0).unwrap()),
+}
+
+Str: Sstr = { 
+ r#""(\\.|[^"\\])*""# => unsafe { std::mem::transmute(<>) }
+}
+Ident: Sstr = {
+ r"[a-zA-Z][a-zA-Z_0-9]*" => unsafe { std::mem::transmute(<>) }
+}
+Int: i32 = {
+ r"[0-9]+" => i32::from_str_radix(<>, 10).unwrap(),
+ r"0x[0-9]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
+ r"0b[0-9]+" => i32::from_str_radix(&<>[2..], 2).unwrap(),
+}
+Real: f32 = {
+ r"[0-9]+[.][0-9]+" => <>.parse().unwrap(),
+}
+Prim: Prim = {
+ "byte" => Prim::Byte,
+ "short" => Prim::Short,
+ "int" => Prim::Int,
+ "long" => Prim::Long,
+ "word" => Prim::Word,
+ "real" => Prim::Real,
+ "double" => Prim::Double,
+ r"byte(4|8|16|32|64)" => Prim::Vector(false, 8, <>[4..].parse().unwrap()),
+ r"short(2|4|8|16|32)" => Prim::Vector(false, 16, <>[5..].parse().unwrap()),
+ r"int(2|4|8|16)" => Prim::Vector(false, 32, <>[3..].parse().unwrap()),
+ r"long(2|4|8)" => Prim::Vector(false, 64, <>[4..].parse().unwrap()),
+ r"real(2|4|8|16)" => Prim::Vector(true, 32, <>[4..].parse().unwrap()),
+ r"double(2|4|8)" => Prim::Vector(true, 64, <>[6..].parse().unwrap()),
+}
+
+
+match { 
+  r"byte(4|8|16|32|64)", 
+  r"short(2|4|8|16|32)",
+  r"int(2|4|8|16)",
+  r"long(2|4|8)",
+  r"real(2|4|8|16)",
+  r"double(2|4|8)",
+  "byte", "short", "int", "long", "real", "double",
+  r"\r?\n" => newline,
+  r"#.*\n?" => comment,
+  r"[ \t]" => {},
+ _
+}

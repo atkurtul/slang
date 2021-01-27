@@ -1,0 +1,18 @@
+[package]
+name = "ast"
+version = "0.1.0"
+authors = ["atil"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fxhash = "0.2.1"
+lalrpop-util = "0.19.1"
+llvm-sys = "110"
+libc="^0"
+bumpalo = "3.5.0"
+
+[build-dependencies]
+cc = "1.0"
+lalrpop = {version = "0.19.1", features = ["lexer"] }

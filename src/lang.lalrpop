@@ -1,0 +1,385 @@
+use crate::ast::*;
+
+grammar(table: &mut SymbolTable);
+
+#[inline] ArrayL = "[";
+#[inline] ArrayR = "]";
+#[inline] GenericL = "[";
+#[inline] GenericR = "]";
+#[inline] TupleL = "{";
+#[inline] TupleR = "}";
+
+#[inline] BlockL = "{";
+#[inline] BlockR = "}";
+
+pub xLang =  {
+  <Statements*> 
+}
+
+#[inline]
+Lang: Vec<Expr> = {
+  <Statements*> 
+}
+
+P<T>: Box<T> = { T => Box::new(<>) }
+
+//#[inline]
+Literal: Literal = {
+  Int  => Literal::Int(<>),
+  Real => Literal::Real(<>),
+  Str  => Literal::Str(<>),
+}
+
+//#[inline]
+Adt: Ty = {
+  <Ident> => table.get_adt(<>),
+  <Ident> GenericL <seq1<Ty>> GenericR => Ty::Gadt(<>)
+}
+
+Tuple: Vec<Ty> = {
+<Ty> => vec![<>],
+  <mut l:Tuple> "," <r:Ty> => {
+    l.push(r);
+    return l;
+  }
+}
+
+Union: Vec<Vec<Ty>> = {
+  <Tuple> => vec![<>],
+  <mut l:Union> "|" <r:Tuple> => {
+    l.push(r);
+    return l;
+  }
+}
+
+Ty: Ty = {
+  Prim => Ty::Prim(<>),
+  Adt,
+  "[" "]" => Ty::Void,
+  "[" <Union> "]" => unroll_production(<>),
+  <n:Usize> <t:Ty> => Ty::Array(n, Box::new(t)),
+  "*" <Ty> => Ty::Ptr(Box::new(<>)),
+  "(" <args:seq0<Ty>> ")" <re:("->" <Ty>)?> => {
+    Ty::Func(args, Box::new(re.unwrap_or(Ty::Void)))
+  },
+}
+
+
+PushBinding: Binding = Binding => {
+  table.add_var(&<>);
+  <>
+};
+
+Foreahead: (Binding, Box<Expr>) = "for" <l:Binding> "in" <r:P<Expr>> => {
+  table.add_var(&l); (l, r)
+};
+
+//#[inline]
+Statements: Expr = {
+  <Expr> ";",
+  "ret" <P<Expr>?> ";" => Expr::Ret(<>),
+  "brk" <Ident?> ";" => Expr::Brk(<>),
+  "let" <PushBinding> <Ty?> "=" <P<Expr>> ";" => Expr::Let(<>),
+  Scope <h:Foreahead> <b:P<Block>> Descope => Expr::For(h.0, h.1, b),
+  "if" <P<Expr>> <P<Block>> "else" <P<Block>> => Expr::IfElse(<>),
+  "if" <P<Expr>> <P<Block>> => Expr::If(<>),
+  "while" <P<Expr>> <P<Block>> => Expr::While(<>),
+  "jmp" <P<Expr>> BlockL <seq1<(Scope <Pattern> "=>" <Expr> Descope)>> BlockR => Expr::Jmp(<>),
+  Func,
+  Type,
+  Extern,
+}
+
+PushIdent: Sstr = Ident => (table.add_sym(&<>), <>).1;
+
+Args0: (Option<Ty>, Vec<(Sstr, Ty)>) = {
+  "(" <s:("self" <Ty> ",")?> <a:seq1<(PushIdent Ty)>> ")" => (s, a),
+  "(" "self" <Ty> ","? ")" => (Some(<>), vec![]),
+  => (None, vec![])
+}
+
+Args: (Option<Ty>, Vec<Sstr>, Vec<Ty>) = {
+  Args0 => {
+    let (this, args) = <>;
+    let (names, args) = args.into_iter().unzip();
+    (this, names, args)
+  }
+}
+
+Extern: Expr = {
+  "extern" BlockL <(Ident Ty)*> BlockR => Expr::Extern(<>),
+  "extern"  <(Ident Ty)> ";" => Expr::Extern(vec![<>])
+}
+
+
+Generics: usize = (GenericL <seq1<Ident>> GenericR)? => table.scope_generics(<>.unwrap_or_default());
+DescopeGenerics: () = => table.descope_generics();
+
+Func: Expr = {
+  Scope "fn" <name:Ident> <gen:Generics> <args:Args> <ret:("->" <Ty>)?> <body:Blockv> Descope DescopeGenerics => {
+    let (this, names, args) = args;
+    let ret = ret.unwrap_or(Ty::Void);
+    Expr::Func {
+      name,
+      args,
+      ret,
+      names,
+      this,
+      gen,
+      body,
+    }
+  }
+}
+
+SumType: bool = {
+  "type"  => false,
+  "enum" => true,
+}
+
+Type: Expr = {
+  <sum:SumType> <name:Ident> <gen:Generics> BlockL  <mems:seq0<(<Ident> <Ty>)>> BlockR
+  DescopeGenerics => {
+    let (names, mems) = mems.into_iter().unzip();
+    Expr::Type {
+      sum,
+      name,
+      mems,
+      names,
+      gen,
+    }
+  }
+}
+
+Binding: Binding = {
+  "_" => Binding::Ignore,
+  Ident => Binding::Ident(<>),
+  "[" <seq2<Binding>> "]"  => Binding::Tuple(<>)
+}
+
+//#[inline]
+Pattern: Pattern = {
+  PushBinding => Pattern::Binding(<>),
+}
+
+
+Scope: ()   = => table.scope();
+Descope: () = => table.descope();
+
+//#[inline]
+Blockv: Vec<Expr> = Scope BlockL <Lang> BlockR Descope => <>;
+Block: Expr = Blockv => Expr::Block(<>);
+
+Lambdahead: Vec<(Sstr, Option<Ty>)> = ">" <(<PushIdent> <Ty?> ",")*>;
+
+
+Expr: Expr  = {
+  Logor,
+  <P<Logor>> ".." <P<Logor>> => Expr::Range(<>),
+  Scope <Lambdahead> <P<Block>>    Descope => Expr::Lambda(<>),
+  Scope <Lambdahead> ":" <P<Expr>> Descope => Expr::Lambda(<>),
+  <l:P<Logor>> <o:AssignOp> <r:P<Expr>> => Expr::AssignOp(o,l,r),
+  <P<Logor>> "=" <P<Expr>> => Expr::Assign(<>),
+  "if" <P<Expr>> <P<Block>> "else" <P<Block>> => Expr::IfElse(<>),
+  "jmp" <P<Expr>> BlockL <seq1<(Scope <Pattern> "=>" <Expr> Descope)>> BlockR => Expr::Jmp(<>),
+}
+
+//#[inline]
+Aggregate: Aggregate = {
+  // ArrayL <seq0<Expr>> ArrayR => Aggregate::Array(<>),
+  TupleL <seq0<Expr>> TupleR => Aggregate::Tuple(<>),
+  <Identp> TupleL <seq0<(<Ident> ":" <Logor>)>> TupleR => Aggregate::Struct(<>),
+  <Ident> "::" <Ident> TupleL <seq0<Expr>> TupleR => Aggregate::Constructor(<>),
+  //<Ident> "::" <Ident> => Aggregate::Constructor(<>, vec![]),
+}
+
+//#[inline]
+Leaf: Expr = {
+  Literal   => Expr::Literal(<>),
+  Aggregate => Expr::Aggregate(<>),
+  Var       => Expr::Var(<>),
+  "(" <Expr> ")",
+  "self" => Expr::This,
+  "nil" => Expr::Nil,
+}
+
+//#[inline]
+Postfix: Expr = {
+  Leaf,
+  <P<Postfix>> <(GenericL <seq1<Ty>> GenericR)?> "(" <(<Expr> ",")*> ")" => Expr::Call(<>),
+  <Identp> <(GenericL <seq1<Ty>> GenericR)?> "(" <(<Expr> ",")*> ")" => Expr::FreeCall(<>),
+  <P<Postfix>> "." "[" <P<Expr>> "]" => Expr::Subscript(<>),
+  <P<Postfix>> "." <Ident>  => Expr::Member(<>),
+  <P<Postfix>> "." <Usize>  => Expr::TupleIndex(<>),
+  <P<Postfix>> "++" => Expr::Unary(Unop::PostInc, <>),
+  <P<Postfix>> "--" => Expr::Unary(Unop::PostDec, <>),
+}
+
+//#[inline]
+Unop: Expr = {
+  <Postfix>,
+  <Unops> <P<Unop>> => Expr::Unary(<>),
+  
+}
+
+//#[inline]
+Binop<Prev, Op>: Expr = {
+  Prev,
+  <l:P<Binop<Prev, Op>>> <o: Op> <r:P<Prev>> => Expr::Binary(o,l,r)
+}
+
+Mul:    Expr = Binop<Unop,   Mulop>;
+Add:    Expr = Binop<Mul,    Addop>;
+Shift:  Expr = Binop<Add,    Shlr>;
+Cmp:    Expr = Binop<Shift,  Cmpop>;
+Eq:     Expr = Binop<Cmp,    Eqop>;
+Bitand: Expr = Binop<Eq,     Andop>;
+Bitxor: Expr = Binop<Bitand, Xorop>;
+Bitor:  Expr = Binop<Bitxor, Orop>;
+Logand: Expr = Binop<Bitor,  Logandop>;
+Logor:  Expr = Binop<Logand, Logorop>;
+
+//#[inline]
+Unops: Unop = {
+  "&"  => Unop::Addrof, 
+  "*"  => Unop::Deref, 
+  "-"  => Unop::Neg, 
+  "!"  => Unop::Not, 
+  "++" => Unop::Inc, 
+  "--" => Unop::Dec, 
+}
+
+//#[inline]
+Mulop: Binop = {
+  "*" => Binop::Mul,
+  "/" => Binop::Div,
+  "%" => Binop::Rem,
+} 
+//#[inline]
+Addop: Binop = {
+  "+" => Binop::Add,
+  "-" => Binop::Sub,
+}
+
+//#[inline]
+Shlr : Binop = {
+  ">>" => Binop::Shr,
+  "<<" => Binop::Shl,
+}
+
+//#[inline]
+Cmpop : Binop = {
+  "<" => Binop::Lt,
+  ">" => Binop::Gt,
+  "<=" => Binop::Le,
+  ">=" => Binop::Ge,
+}
+
+//#[inline]
+Eqop : Binop = {
+  "==" => Binop::Eq,
+  "!=" => Binop::Neq,
+}
+
+Andop: Binop = "&" => Binop::And;
+Xorop: Binop = "^" => Binop::Xor;
+Orop: Binop = "|" => Binop::Or;
+Logandop: Binop = "and" => Binop::Logand;
+Logorop: Binop = "or" => Binop::Logor;
+
+Usize: usize = Int => <> as usize;
+Var: Sstr = Varp => <>.0;
+//Fold: Sstr = Foldp => <>.0;
+
+//#[inline] 
+Ident: Sstr = {
+  <Var>, <Identp>, 
+  //<Fold>
+}
+
+extern {
+  type Location = Loc;
+  type Error = ();
+  enum Tok {
+    Prim => Tok::Prim (<Prim>),
+    Int => Tok::Int(<i32>),
+    Real => Tok::Real(<f32>),
+    Str => Tok::Str(<Sstr>),
+    Identp => Tok::Ident(<Sstr>),
+    Varp   => Tok::Var(<Sstr>,  <usize>),
+    //Foldp  => Tok::Fold(<Sstr>, <usize>),
+    "::" => Tok::Turbo,
+    "->" => Tok::Arrow,
+    "=>" => Tok::FatArrow,
+    "extern" => Tok::Kwextern,
+    "self" => Tok::Kwself,
+    "nil" => Tok::Kwnil,
+    "type" => Tok::Kwty, 
+    "enum" => Tok::Kwenum, 
+    "fn" => Tok::Kwfn, 
+    "let" => Tok::Kwlet,
+    "ret" => Tok::Kwret,
+    "else" => Tok::Kwelse,
+    "if" => Tok::Kwif,
+    "jmp" => Tok::Kwjump,
+    "brk" => Tok::Kwbrk,
+    "loop" => Tok::Kwloop,
+    "while" => Tok::Kwwhile,
+    "for" => Tok::Kwfor,
+    "in" => Tok::Kwin,
+    "++" => Tok::Inc,
+    "--" => Tok::Dec,
+    ".." => Tok::Dotdot,
+    "..." => Tok::Elipsis,
+    "_" => Tok::Wildcard,
+    "'" => Tok::Punct('\''),
+    "{" => Tok::Punct('{'),
+    "}" => Tok::Punct('}'),
+    "(" => Tok::Punct('('),
+    ")" => Tok::Punct(')'),
+    "[" => Tok::Punct('['),
+    "]" => Tok::Punct(']'),
+    ";" => Tok::Punct(';'),
+    "," => Tok::Punct(','),
+    "." => Tok::Punct('.'),
+    ":" => Tok::Punct(':'),
+    "@" => Tok::Punct('@'),
+    "=" => Tok::Punct('='),
+    "^" => Tok::Punct('^'),
+    "|" => Tok::Punct('|'),
+    "&" => Tok::Punct('&'),
+    "%" => Tok::Punct('%'),
+    "*" => Tok::Punct('*'),
+    "+" => Tok::Punct('+'),
+    "-" => Tok::Punct('-'),
+    "/" => Tok::Punct('/'),
+    ">" => Tok::Punct('>'),
+    "<" => Tok::Punct('<'),
+    "!" => Tok::Punct('!'),
+    "~" => Tok::Punct('~'),
+    "?" => Tok::Punct('?'),
+    ">=" => Tok::Ops(Binop::Ge),
+    "<=" => Tok::Ops(Binop::Le),
+    ">>" => Tok::Ops(Binop::Shr),
+    "<<" => Tok::Ops(Binop::Shl),
+    "==" => Tok::Ops(Binop::Eq),
+    "!=" => Tok::Ops(Binop::Neq),
+    "or" => Tok::Ops(Binop::Logor),
+    "and" => Tok::Ops(Binop::Logand),
+    AssignOp => Tok::Assignops(<Binop>),
+  }
+}
+
+//#[inline]
+seq2<T>: Vec<T> = {
+  <mut l: (<T> ",")+> <r:T> ","? => {
+    l.push(r); l
+  }
+}
+//#[inline]
+seq1<T>: Vec<T> = {
+  <mut l: (<T> ",")*> <r:T> ","? => {
+    l.push(r); l
+  }
+}
+//#[inline]
+seq0<T> : Vec<T> = seq1<T>? => <>.unwrap_or_default();
