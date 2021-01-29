@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_variables, unused_macros)]
+#![allow(dead_code, unused_variables, unused_macros, warnings)]
 #![feature(allocator_api)]
 pub mod ast;
 pub mod lexer;
@@ -10,7 +10,6 @@ use memory::ptr;
 
 pub use memory::defo;
 
-
 pub type Sstr = &'static str;
 
 macro_rules! mkstr {
@@ -21,7 +20,7 @@ macro_rules! mkstr {
 
 fn main() {
   let allocator = Bump::new();
-  let (src, file) = ast::parse_file("src/slang.sl");
+  let (src, file) = ast::parse_file("src/vk.sl");
   let top = lower::Context::begin(ptr(&allocator), file);
   use lower::Expr::*;
   for prog in top.nodes {
@@ -34,9 +33,7 @@ fn main() {
         }
         // println!("{:#?}", p);
       }
-      _ => ()
+      _ => (),
     };
   }
 }
-
-

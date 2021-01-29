@@ -69,8 +69,10 @@ PushBinding: Binding = Binding => {
   <>
 };
 
-Foreahead: (Binding, Box<Expr>) = "for" <l:Binding> "in" <r:P<Expr>> => {
-  table.add_var(&l); (l, r)
+Foreahead: Option<(Binding, Box<Expr>)> = "for" <lr:(<Binding> "in" <P<Expr>>)?> => {
+  if let Some((ref l, ref r)) = lr { 
+    table.add_var(&l); 
+  } lr
 };
 
 //#[inline]
@@ -79,10 +81,16 @@ Statements: Expr = {
   "ret" <P<Expr>?> ";" => Expr::Ret(<>),
   "brk" <Ident?> ";" => Expr::Brk(<>),
   "let" <PushBinding> <Ty?> "=" <P<Expr>> ";" => Expr::Let(<>),
-  Scope <h:Foreahead> <b:P<Block>> Descope => Expr::For(h.0, h.1, b),
   "if" <P<Expr>> <P<Block>> "else" <P<Block>> => Expr::IfElse(<>),
   "if" <P<Expr>> <P<Block>> => Expr::If(<>),
   "while" <P<Expr>> <P<Block>> => Expr::While(<>),
+  Scope <h:Foreahead> <b:P<Block>> Descope => {
+    if let Some((h0,h1)) = h {
+      Expr::For(h0, h1, b)
+    } else {
+      Expr::Forever(b)
+    }
+  },
   "jmp" <P<Expr>> BlockL <seq1<(Scope <Pattern> "=>" <Expr> Descope)>> BlockR => Expr::Jmp(<>),
   Func,
   Type,

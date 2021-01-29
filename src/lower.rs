@@ -85,6 +85,7 @@ pub enum Expr {
   IfElse,   //(ptr<Node>, ptr<Node>, ptr<Node>),
   If,       //(ptr<Node>, ptr<Node>),
   While,    //(ptr<Node>, ptr<Node>),
+  Forever,  //(ptr<Node>),
   Jmp,      //(ptr<Node>, Vec<(Pattern, Node)>),
   For,      //(Binding, ptr<Node>, ptr<Node>),
 
@@ -291,6 +292,7 @@ impl Context {
       ..defo()
     }
   }
+
 
   pub fn begin(bumper: ptr<Bump>, x: Vec<ast::Expr>) -> Context {
     let mut top = Self::new(bumper);
@@ -615,7 +617,12 @@ impl Context {
         self.new_node(Some(Ty::Void), Expr::While)
         //self.new_node(Some(Ty::Void), Expr::While(c, t))
       }
-      
+
+      ast::Expr::Forever(t) => {
+        let t = self.lowerb(t);
+        self.new_node(Some(Ty::Void), Expr::Forever)
+      }
+
       ast::Expr::Jmp(..) => unreachable!(),
       
       ast::Expr::For(v, x, b) => {
@@ -674,7 +681,7 @@ impl Context {
   }
 }
 
-fn unify_t(mut left: ptr<Node>, right: ptr<Ty>) {
+fn unify_t(left: ptr<Node>, right: ptr<Ty>) {
   match left.ty.get_mut() {
     Ty::Var(t) => unify_var(left, t, right),
     t => assert_eq!(t, right.get_mut()),
@@ -682,6 +689,7 @@ fn unify_t(mut left: ptr<Node>, right: ptr<Ty>) {
 }
 
 fn unify_var(mut node: ptr<Node>, ty: &mut TypeVariable, right: ptr<Ty>) {
+  //unify the whole blob
   for var in ty.equalities.iter() {
     var.ty.drop_in_place();
     ptr(var).ty = right;
@@ -692,7 +700,7 @@ fn unify_var(mut node: ptr<Node>, ty: &mut TypeVariable, right: ptr<Ty>) {
   println!("Unification succesful => {:?} ", node.ty);
 }
 
-fn unify(mut left: ptr<Node>, mut right: ptr<Node>) {
+fn unify(left: ptr<Node>, mut right: ptr<Node>) {
   //println!("Unifying {:?} {:?}", left.ty, right.ty);
   let lhs: &mut Ty = left.ty.get_mut();
   let rhs: &mut Ty = right.ty.get_mut();

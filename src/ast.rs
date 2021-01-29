@@ -100,6 +100,7 @@ pub enum Expr {
     IfElse(Box<Expr>, Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>),
     While(Box<Expr>, Box<Expr>),
+    Forever(Box<Expr>),
     Jmp(Box<Expr>, Vec<(Pattern, Expr)>),
 
     For(Binding, Box<Expr>, Box<Expr>),
