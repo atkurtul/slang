@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use feature qw(say);
 
-open($fh, "<", "vk.h");
+open($fh, "<", "/usr/include/vulkan/vulkan_core.h");
 
 while($line = <$fh>) {
   $core .= $line;

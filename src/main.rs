@@ -42,6 +42,7 @@ mod tests {
     let (src, file) = crate::ast::parse_file(src);
     let top = crate::lower::Context::new(file);
   }
+  #[test]fn vk() {parse_quick("tests/vk.sl");}
   #[test]fn hello_world() {parse_quick("tests/helloworld.sl");}
   #[test]fn test0() {parse_quick("tests/test0.sl");}
   #[test]fn test1() {parse_quick("tests/test1.sl");}
