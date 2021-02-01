@@ -4,7 +4,10 @@ use crate::memory::*;
 use crate::*;
 use fxhash::FxHashMap;
 use fxhash::FxHashSet;
-use std::{hash::{Hash, Hasher}, unimplemented, unreachable};
+use std::{
+  hash::{Hash, Hasher},
+  unimplemented, unreachable,
+};
 pub use std::{rc::*, usize};
 pub type Map<K, V> = FxHashMap<K, V>;
 pub type Set<K> = FxHashSet<K>;
@@ -66,17 +69,27 @@ pub enum Ty {
 }
 
 impl Ty {
+  pub fn autoderef(&self) -> Option<&Ty> {
+    match self {
+      Ty::Adt(_) | Ty::Gadt(..) => Some(self),
+      Ty::Ptr(t) => t.autoderef(),
+      _ => None,
+    }
+  }
+
   pub fn agg_subsitute_generics(agg: &[Ty], map: &[Ty]) -> Rc<[Ty]> {
-    agg.into_iter()
-      .map(|t| t.subsitute_generics(map))
-      .collect()
+    agg.into_iter().map(|t| t.subsitute_generics(map)).collect()
   }
 
   pub fn agg_gather(t: &[Ty], t1: &[Ty], map: &mut [Option<Ty>]) {
-    t.iter().zip(t1.iter()).for_each(|(t, t1)| t.gather(t1, map))
+    t.iter()
+      .zip(t1.iter())
+      .for_each(|(t, t1)| t.gather(t1, map))
   }
   pub fn agg_gather2(t: &[Ty], t1: Vec<&Ty>, map: &mut [Option<Ty>]) {
-    t.iter().zip(t1.iter()).for_each(|(t, t1)| t.gather(t1, map))
+    t.iter()
+      .zip(t1.iter())
+      .for_each(|(t, t1)| t.gather(t1, map))
   }
   pub fn deps(&self, bit: &mut usize) {
     match self {
@@ -94,14 +107,12 @@ impl Ty {
       }
       Ty::Adt(t) => {
         assert_eq!(t.gen, 0);
-      },
-      Ty::Gadt(t, g) => {
-        g.iter().for_each(|t| t.deps(bit))
-      },
+      }
+      Ty::Gadt(t, g) => g.iter().for_each(|t| t.deps(bit)),
       //Ty::Alias(t) => t.deps(bit),
       Ty::Var(t) => {
         panic!();
-      },
+      }
       Ty::Void | Ty::Prim(_) => (),
     }
   }
@@ -118,8 +129,8 @@ impl Ty {
       (Ty::Tuple(t), Ty::Tuple(t1)) => Ty::agg_gather(t, t1, map),
       (Ty::Union(t), Ty::Union(t1)) => Ty::agg_gather(t, t1, map),
       (Ty::Slice(t), Ty::Slice(t1)) => t.gather(t1, map),
-      (Ty::Ptr(t), Ty::Ptr(t1))  => t.gather(t1, map),
-      (Ty::Array(l, t) , Ty::Array(l1, t1)) => t.gather(t1, map),
+      (Ty::Ptr(t), Ty::Ptr(t1)) => t.gather(t1, map),
+      (Ty::Array(l, t), Ty::Array(l1, t1)) => t.gather(t1, map),
       (Ty::Func(a, t, va), Ty::Func(a1, t1, va1)) => {
         Ty::agg_gather(a, a1, map);
         t.gather(t1, map);
@@ -127,11 +138,11 @@ impl Ty {
       (Ty::Adt(t), Ty::Adt(t1)) => {
         assert_eq!(t, t1);
         assert_eq!(t.gen, 0);
-      },
+      }
       (Ty::Gadt(t, g), Ty::Gadt(t1, g1)) => {
         assert_eq!(t, t1);
         Ty::agg_gather(g, g1, map);
-      },
+      }
       //(l, Ty::Alias(t)) => l.gather(t, map),
       //(Ty::Alias(l), t) => l.gather(t, map),
       _ => (),
@@ -154,9 +165,7 @@ impl Ty {
         *va,
       ),
       Ty::Adt(t) if t.gen == 0 => self.clone(),
-      Ty::Gadt(t, g) => {
-        Ty::Gadt(t.clone(), Ty::agg_subsitute_generics(g, map))
-      }
+      Ty::Gadt(t, g) => Ty::Gadt(t.clone(), Ty::agg_subsitute_generics(g, map)),
       //Ty::Alias(t) => t.subsitute_generics(map),
       _ => panic!("{:?}", self),
     }
@@ -164,7 +173,7 @@ impl Ty {
 
   pub fn satisfies(&self, r: &Ty) -> bool {
     // if let Ty::Alias(t) = r {
-    //   return self.satisfies(t);
+    //  return self.satisfies(t);
     // }
     match self {
       //Ty::Alias(t) => t.satisfies(r),
@@ -275,10 +284,12 @@ impl Ty {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Aggregate {
-  Struct(Rc<Adt>, 
+  Struct(
+    Rc<Adt>,
     Rc<[Ty]>, // Gradually filled
-    Box<[Sstr]>, 
-    Box<[Rc<Node>]>),
+    Box<[Sstr]>,
+    Box<[Rc<Node>]>,
+  ),
   Tuple(Vec<Rc<Node>>),
   Array(Vec<Rc<Node>>),
 }
@@ -313,11 +324,10 @@ pub enum Expr {
 
   Ctx(Rc<Context>),
 
-
-  Ret,   //(Option<Rc<Node>>),
-  Brk,   //(Option<Sstr>),
-  IfElse, //(Rc<Node>, Rc<Node>, Rc<Node>),
-  If,   //(Rc<Node>, Rc<Node>),
+  Ret(Option<Rc<Node>>),
+  Brk, //(Option<Sstr>),
+  IfElse(Rc<Node>, Rc<Node>, Rc<Node>),
+  If(Rc<Node>, Rc<Node>),
   While,  //(Rc<Node>, Rc<Node>),
   Forever, //(Rc<Node>),
   Jmp,   //(Rc<Node>, Vec<(Pattern, Node)>),
@@ -331,43 +341,43 @@ pub enum Expr {
 
 impl Expr {
   pub fn name(&self) -> Sstr {
-      match self {
-        Expr::This => "This",
-        Expr::Nil => "Nil",
-        Expr::Arg => "Arg",
-        Expr::Va => "Va",
-        Expr::Accumulator => "Accumulator",
-        Expr::Counter => "Counter",
-        Expr::Literal(..) => "Literal",
-        Expr::Var(..) => "Var",
-        Expr::Cast(..) => "Cast",
-        Expr::Binary(..) => "Binary",
-        Expr::Unary(..) => "Unary",
-        Expr::AssignOp(..) => "AssignOp",
-        Expr::Assign(..) => "Assign",
-        Expr::Subscript(..) => "Subscript",
-        Expr::Index(..) => "Index",
-        Expr::Field(..) => "Field",
-        Expr::Range(..) => "Range",
-        Expr::Aggregate(..) => "Aggregate",
-        Expr::Lambda(..) => "Lambda",
-        Expr::Block(..) => "Block",
-        Expr::Call(..) => "Call",
-        Expr::Ctx(..) => "Ctx",
-        Expr::Ret => "Ret",
-        Expr::Brk => "Brk",
-        Expr::IfElse => "IfElse",
-        Expr::If => "If",
-        Expr::While => "While",
-        Expr::Forever => "Forever",
-        Expr::Jmp => "Jmp",
-        Expr::For => "For",
-        Expr::Let(..) => "Let",
-        Expr::Type => "Type",
-        Expr::Extern => "Extern",
-        Expr::Label => "Label",
-        Expr::Skip => "Skip",
-      }
+    match self {
+      Expr::This => "This",
+      Expr::Nil => "Nil",
+      Expr::Arg => "Arg",
+      Expr::Va => "Va",
+      Expr::Accumulator => "Accumulator",
+      Expr::Counter => "Counter",
+      Expr::Literal(..) => "Literal",
+      Expr::Var(..) => "Var",
+      Expr::Cast(..) => "Cast",
+      Expr::Binary(..) => "Binary",
+      Expr::Unary(..) => "Unary",
+      Expr::AssignOp(..) => "AssignOp",
+      Expr::Assign(..) => "Assign",
+      Expr::Subscript(..) => "Subscript",
+      Expr::Index(..) => "Index",
+      Expr::Field(..) => "Field",
+      Expr::Range(..) => "Range",
+      Expr::Aggregate(..) => "Aggregate",
+      Expr::Lambda(..) => "Lambda",
+      Expr::Block(..) => "Block",
+      Expr::Call(..) => "Call",
+      Expr::Ctx(..) => "Ctx",
+      Expr::Ret(..) => "Ret",
+      Expr::Brk => "Brk",
+      Expr::IfElse(..) => "IfElse",
+      Expr::If(..) => "If",
+      Expr::While => "While",
+      Expr::Forever => "Forever",
+      Expr::Jmp => "Jmp",
+      Expr::For => "For",
+      Expr::Let(..) => "Let",
+      Expr::Type => "Type",
+      Expr::Extern => "Extern",
+      Expr::Label => "Label",
+      Expr::Skip => "Skip",
+    }
   }
 }
 
@@ -423,7 +433,6 @@ impl std::fmt::Debug for Adt {
   }
 }
 
-
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct Func {
   va: Option<Sstr>,
@@ -450,31 +459,44 @@ impl Func {
     &self.get_args()[i]
   }
 
+  pub fn solve_type_vars_for_params_and_ret(&self, params: &[Rc<Node>], ret: &Ty) -> Vec<Option<Ty>> {
+    let mut re = self.solve_type_vars_for_params(params);
+    self.get_ret().gather(ret, &mut re);
+    re
+  }
+
   pub fn solve_type_vars_for_params(&self, params: &[Rc<Node>]) -> Vec<Option<Ty>> {
     let args = self.get_args();
     assert_eq!(params.len(), args.len());
     let tys = params.iter().map(|n| &n.t).collect::<Vec<_>>();
-    let mut re: Vec<Option<Ty>> = vec![None;self.gen];
+    let mut re: Vec<Option<Ty>> = vec![None; self.gen];
     //println!("Solving for {:?} = {:?}", args, tys);
     Ty::agg_gather2(args, tys, &mut re);
     re
   }
 
-  
-  //  fn generic_func[x,y,z](T0[x,y], T1[y,z], T2[z,x]) -> T3[x,y,z]
-  //  T3[x,y,z] is deducable from any 2 combination of args  
+  // fn generic_func[x,y,z](T0[x,y], T1[y,z], T2[z,x]) -> T3[x,y,z]
+  // T3[x,y,z] is deducable from any 2 combination of args
   fn deduce_ret_from(&self, params: &[Rc<Node>]) -> (Option<Ty>, Rc<[Ty]>) {
     let g = self.solve_type_vars_for_params(params);
     let mut deps = 0;
     self.get_ret().deps(&mut deps);
-    let known = g.iter().enumerate().fold(0, |n, (i, t)| n|t.is_some().then(|| 1 << i).unwrap_or_default());
+    let known = g.iter().enumerate().fold(0, |n, (i, t)| {
+      n | t.is_some().then(|| 1 << i).unwrap_or_default()
+    });
     //println!("{:b} {:b}", deps, known);
-    let g = g.into_iter().map(|t| t.unwrap_or(Ty::Var(defo()))).collect::<Rc<[_]>>();
-    (if (deps | known) <= known {
-      Some(self.get_ret().subsitute_generics(&g))
-    } else {
-      None
-    }, g)
+    let g = g
+      .into_iter()
+      .map(|t| t.unwrap_or(Ty::Var(defo())))
+      .collect::<Rc<[_]>>();
+    (
+      if (deps | known) <= known {
+        Some(self.get_ret().subsitute_generics(&g))
+      } else {
+        None
+      },
+      g,
+    )
   }
 }
 
@@ -524,9 +546,9 @@ impl Context {
           if let Some(st) = self.records.insert(name, st) {
             panic!("Duplicate definition {}", name);
           }
-        },
+        }
         ast::Expr::Alias(t, n) => {
-          println!("Aliasing {}",n);
+          println!("Aliasing {}", n);
           if let Some(st) = self.aliases.insert(n, Ty::Void) {
             panic!("Duplicate alias {}", n);
           }
@@ -595,7 +617,7 @@ impl Context {
           //Initialize the fields for real this time
           let types = mems.into_iter().map(|t| Ty::new(t, self)).collect();
           ptr::<Adt>(&**self.records.get_mut(name).unwrap()).types = types;
-        },
+        }
         ast::Expr::Alias(t, n) => {
           *ptr(self).aliases.get_mut(n).unwrap() = Ty::new(t, self);
         }
@@ -664,7 +686,10 @@ impl Context {
 
   fn find_func(&self, f: Sstr) -> Option<Rc<Node>> {
     if let Some(ctx) = self.below.get(f) {
-      Some(Node::new((ctx.represents.ty.clone()), Expr::Ctx(ctx.clone())))
+      Some(Node::new(
+        (ctx.represents.ty.clone()),
+        Expr::Ctx(ctx.clone()),
+      ))
     } else if let Some(ctx) = self.above {
       unsafe { (*ctx).find_func(f) }
     } else {
@@ -705,14 +730,11 @@ impl Context {
     self.locals.get(n).or(self.find_arg(n))
   }
 
-
-
   pub fn lower(&mut self, x: &ast::Expr) -> Rc<Node> {
     match x {
-      ast::Expr::This => Node::new(
-        self.represents.this.as_ref().unwrap().clone(),
-        Expr::This,
-      ),
+      ast::Expr::This => {
+        Node::new(self.represents.this.as_ref().unwrap().clone(), Expr::This)
+      }
 
       ast::Expr::Nil => Node::new(Ty::Var(defo()), Expr::Nil),
 
@@ -743,7 +765,9 @@ impl Context {
           | Binop::Gt
           | Binop::Eq
           | Binop::Neq
-          | Binop::And => Node::new((Ty::Prim(Prim::Bool)), Expr::Binary(*op, l.clone(), r)),
+          | Binop::And => {
+            Node::new((Ty::Prim(Prim::Bool)), Expr::Binary(*op, l.clone(), r))
+          }
           _ => {
             //println!("Type of left {:?} {:?}", l.t, l.x);
             Node::new((l.t.clone()), Expr::Binary(*op, l.clone(), r))
@@ -774,9 +798,7 @@ impl Context {
         Node::new((t.clone()), Expr::Cast(t, l))
       }
 
-      ast::Expr::Accumulator => {
-        Node::new(Ty::Var(defo()), Expr::Accumulator)
-      }
+      ast::Expr::Accumulator => Node::new(Ty::Var(defo()), Expr::Accumulator),
 
       ast::Expr::Counter => Node::new((Ty::Prim(Prim::Long(true))), Expr::Counter),
 
@@ -784,14 +806,14 @@ impl Context {
         let l = self.lower(l);
         let r = self.lower(r);
         l.unify_ty(&r.t);
-        Node::new(Ty::Var(defo()), Expr::AssignOp(*op, l, r))
+        Node::new(Ty::Void, Expr::AssignOp(*op, l, r))
       }
 
       ast::Expr::Assign(l, r) => {
         let l = self.lower(l);
         let r = self.lower(r);
         l.unify_ty(&r.t);
-        Node::new(Ty::Var(defo()), Expr::Assign(l, r))
+        Node::new(Ty::Void, Expr::Assign(l, r))
       }
 
       ast::Expr::Subscript(l, r) => {
@@ -807,18 +829,23 @@ impl Context {
 
       ast::Expr::Member(x, i) => {
         let x = self.lower(x);
+        let mut t = &x.t;
 
-        if let Ty::Adt(t) = &x.t {
-          if let Some(t) = t.get_mem_ty(i) {
-            return Node::new((t), Expr::Field(x, *i));
+        match t.autoderef() {
+          Some(Ty::Adt(t)) => {
+            if let Some(t) = t.get_mem_ty(i) {
+              return Node::new(t, Expr::Field(x, *i));
+            }
           }
-        }
-        if let Ty::Gadt(t, g) = &x.t {
-          if let Some(t) = t.get_mem_ty(i) {
-            let t = t.subsitute_generics(&g);
-            return Node::new((t), Expr::Field(x, *i));
+          Some(Ty::Gadt(t, g)) => {
+            if let Some(t) = t.get_mem_ty(i) {
+              let t = t.subsitute_generics(&g);
+              return Node::new(t, Expr::Field(x, *i));
+            }
           }
+          _ => ()
         }
+
         if let Some(f) = self.find_assoc(i) {
           for f in f {
             if f.represents.this.as_ref().unwrap().satisfies(&x.t) {
@@ -826,6 +853,7 @@ impl Context {
             }
           }
         }
+
         Node::new(Ty::Var(defo()), Expr::Field(x, *i))
       }
 
@@ -836,26 +864,25 @@ impl Context {
         Node::new(Ty::Var(defo()), Expr::Range(l, r))
       }
 
-      ast::Expr::Alias(..) => {
-        Node::new(Ty::Void, Expr::Skip)
-      },
+      ast::Expr::Alias(..) => Node::new(Ty::Void, Expr::Skip),
 
       ast::Expr::Call(l, g, r) => {
-        let l = self.lower(l);
-        let r = self.lowerv(r);
-        match &l.t {
-          Ty::Func(args, ret, va) => {
-            let g = g.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
-            let g = Ty::agg(g, self);
-            let args = Ty::agg_subsitute_generics(args, &g);
-            let ret = Ty::subsitute_generics(ret, &g);
-            for (x, t) in r.iter().zip(args.iter()) {
-              x.unify_ty(t);
-            }
-            Node::new((ret), Expr::Call(l, g, r))
-          }
-          what => unreachable!(),
-        }
+        // let l = self.lower(l);
+        // let r = self.lowerv(r);
+        // match &l.t {
+        //   Ty::Func(args, ret, va) => {
+        //     let g = g.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        //     let g = Ty::agg(g, self);
+        //     let args = Ty::agg_subsitute_generics(args, &g);
+        //     let ret = Ty::subsitute_generics(ret, &g);
+        //     for (x, t) in r.iter().zip(args.iter()) {
+        //       x.unify_ty(t);
+        //     }
+        //     Node::new(ret, Expr::Call(l, g, r))
+        //   }
+        //   what => unreachable!(),
+        // }
+        panic!()
       }
 
       ast::Expr::FreeCall(l, g, r) => {
@@ -871,7 +898,7 @@ impl Context {
                 //All good
                 if c.represents.gen == g.len() {
                   Ty::agg(g, self)
-                } 
+                }
                 //Needs deducing
                 else {
                   let (ret, g) = c.represents.deduce_ret_from(&r);
@@ -889,7 +916,7 @@ impl Context {
             for (x, t) in r.iter().zip(args.iter()) {
               x.unify_ty(t);
             }
-            Node::new((ret), Expr::Call(f, g, r))
+            Node::new(ret, Expr::Call(f, g, r))
           }
           _ => unreachable!(),
         }
@@ -903,19 +930,18 @@ impl Context {
         }
 
         ast::Aggregate::Struct(n, g, x) => {
-          let (s, v): (Vec<_>, Vec<_>) = x.into_iter().map(|(s, x)| (*s, self.lower(x))).unzip();
+          let (s, v): (Vec<_>, Vec<_>) =
+            x.into_iter().map(|(s, x)| (*s, self.lower(x))).unzip();
           let st = self.find_named_type(n).unwrap();
 
-          let (ty, g): (_, Rc::<[_]>) = match (st.gen, g.len()) {
+          let (ty, g): (_, Rc<[_]>) = match (st.gen, g.len()) {
             (0, 0) => (Ty::Adt(st.clone()), Rc::new([])),
-            (n, 0) => {
-              (Ty::Var(defo()), (0..n).map(|_| Ty::Var(defo())).collect())
-            }
+            (n, 0) => (Ty::Var(defo()), (0..n).map(|_| Ty::Var(defo())).collect()),
             (n, m) if n == m => {
               let g = Ty::agg(g, self);
               (Ty::Gadt(st.clone(), g.clone()), g)
             }
-            what => unreachable!("{:?}", what)
+            what => unreachable!("{:?}", what),
           };
 
           Node::new(
@@ -923,8 +949,8 @@ impl Context {
             Expr::Aggregate(Aggregate::Struct(
               st,
               g,
-              s.into_boxed_slice(), 
-              v.into_boxed_slice(), 
+              s.into_boxed_slice(),
+              v.into_boxed_slice(),
             )),
           )
         }
@@ -955,52 +981,54 @@ impl Context {
 
       ast::Expr::Block(b) => {
         let b = self.lowerv(b);
-        Node::new((Ty::Void), Expr::Block(b))
+        Node::new(Ty::Void, Expr::Block(b))
       }
 
       ast::Expr::Ret(x) => {
         let x = x.as_ref().map(|x| {
           let re = self.lower(&x);
-          re.unify_ty(self.represents.get_ret())
+          re.unify_ty(self.represents.get_ret());
+          re
         });
-        Node::new((Ty::Void), Expr::Ret)
+        Node::new(Ty::Void, Expr::Ret(x))
       }
 
-      ast::Expr::Brk(x) => Node::new(Ty::Var(defo()), Expr::Brk),
+      ast::Expr::Brk(x) => Node::new(Ty::Void, Expr::Brk),
 
       ast::Expr::IfElse(c, t, f) => {
         let c = self.lower(c);
         c.unify_ty(&Ty::Prim(Prim::Bool));
         let t = self.lower(t);
         let f = self.lower(f);
-        Node::new((Ty::Void), Expr::IfElse)
+
+        Node::new(Ty::Void, Expr::IfElse(c, t, f))
       }
 
       ast::Expr::If(c, t) => {
         let c = self.lower(c);
         c.unify_ty(&Ty::Prim(Prim::Bool));
         let t = self.lower(t);
-        Node::new((Ty::Void), Expr::If)
+        Node::new(Ty::Void, Expr::If(c, t))
       }
 
       ast::Expr::While(c, t) => {
         let c = self.lower(c);
         c.unify_ty(&Ty::Prim(Prim::Bool));
         let t = self.lower(t);
-        Node::new((Ty::Void), Expr::While)
-        //Node::new((Ty::Void), Expr::While(c, t))
+        Node::new(Ty::Void, Expr::While)
+        //Node::new(Ty::Void, Expr::While(c, t))
       }
 
       ast::Expr::Forever(t) => {
         let t = self.lower(t);
-        Node::new((Ty::Void), Expr::Forever)
+        Node::new(Ty::Void, Expr::Forever)
       }
 
       ast::Expr::Jmp(..) => unreachable!(),
 
       ast::Expr::For(v, x, b) => {
         let x = self.lower(x);
-        Node::new((Ty::Void), Expr::For)
+        Node::new(Ty::Void, Expr::For)
       }
 
       ast::Expr::Let(v, t, x) => {
@@ -1010,12 +1038,12 @@ impl Context {
           x.unify_ty(&t);
         });
         self.insert_var(v, x.clone());
-        Node::new((Ty::Void), Expr::Let(x))
+        Node::new(Ty::Void, Expr::Let(x))
       }
 
       ast::Expr::Label(s) => {
         self.labels.insert(s);
-        Node::new((Ty::Void), Expr::Label)
+        Node::new(Ty::Void, Expr::Label)
       }
 
       ast::Expr::Func {
@@ -1043,7 +1071,7 @@ impl Context {
         defo()
       }
 
-      ast::Expr::Extern { .. } => Node::new((Ty::Void), Expr::Extern),
+      ast::Expr::Extern { .. } => Node::new(Ty::Void, Expr::Extern),
 
       ast::Expr::Type {
         sum,
@@ -1051,20 +1079,19 @@ impl Context {
         mems, //Vec<Ty>,
         names, //Vec<Sstr>,
         gen,  //usize,
-      } => Node::new((Ty::Void), Expr::Type),
+      } => Node::new(Ty::Void, Expr::Type),
     }
   }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Adt {
-  name:  Sstr,
+  name: Sstr,
   names: Box<[Sstr]>,
   types: Box<[Ty]>,
-  gen:   usize,
-  sum:   u8,
+  gen: usize,
+  sum: u8,
 }
-
 
 impl Adt {
   fn get_mem_ty(&self, n: Sstr) -> Option<Ty> {
@@ -1076,10 +1103,9 @@ impl Adt {
   }
 
   fn solve_type_vars_for_members(&self, members: &[Rc<Node>]) -> Vec<Option<Ty>> {
-
     assert_eq!(members.len(), self.types.len());
     let tys = members.iter().map(|n| &n.t).collect::<Vec<_>>();
-    let mut re: Vec<Option<Ty>> = vec![None;self.gen];
+    let mut re: Vec<Option<Ty>> = vec![None; self.gen];
     Ty::agg_gather2(&self.types, tys, &mut re);
     re
   }
@@ -1106,7 +1132,7 @@ pub fn xunify(mut lhs: &Ty, mut rhs: &Ty) {
         *ptr(rhs) = Ty::Var(new);
       }
     }
-    (Ty::Var(l), r) => {
+    (Ty::Var(l), r) if r.solved() => {
       for node in l.0.iter() {
         deref(&**node).t = r.clone();
       }
@@ -1121,21 +1147,23 @@ pub fn xunify(mut lhs: &Ty, mut rhs: &Ty) {
 }
 
 impl Node {
-
   pub fn new(t: Ty, x: Expr) -> Rc<Node> {
-    Rc::new(Node {t,x})
+    Rc::new(Node { t, x })
   }
 
   pub fn unify_ty(&self, t: &Ty) {
     //println!("Unifying {:?} {:?}", self.x, t);
+    if !t.solved() {
+      return xunify(&self.t, t);
+    }
     match (&self.x, t.clone()) {
       (Expr::Unary(Unop::Addrof, n), Ty::Ptr(t)) => n.unify_ty(&t),
       (Expr::Unary(Unop::Deref, n), t) => {
         //println!("HERE");
         n.unify_ty(&Ty::Ptr(Rc::new(t)));
       }
-      (Expr::Var(_, n), _) |
-      (Expr::Unary(_, n), _) => n.unify_ty(t),
+      (Expr::Var(_, n), _) | (Expr::Unary(_, n), _) => n.unify_ty(t),
+
       (Expr::Binary(o, l, r), _) => match o {
         Binop::Lt
         | Binop::Le
@@ -1149,21 +1177,45 @@ impl Node {
           r.unify_ty(t);
         }
       },
-      (Expr::Aggregate(Aggregate::Struct(..,m)), Ty::Gadt(t, g)) => {
+
+      (Expr::IfElse(c, l, r), _) => {
+        l.unify_ty(t);
+        r.unify_ty(t);
+      }
+      (Expr::Field(f, n), t) => {
+        match f.t.autoderef() {
+          Some(Ty::Adt(st)) => {
+            assert_eq!(st.gen, 0);
+            assert_eq!(st.get_mem_ty(n), Some(t));
+          }
+          Some(Ty::Gadt(st, g)) => {
+            assert_eq!(st.get_mem_ty(n).map(|t| t.subsitute_generics(g)), Some(t));
+          }
+          _ => panic!(),
+        }
+      }
+      (Expr::Aggregate(Aggregate::Struct(.., m)), Ty::Gadt(t, g)) => {
         let tys = Ty::agg_subsitute_generics(&t.types, &g);
         for (t, n) in tys.iter().zip(m.iter()) {
           n.unify_ty(t);
         }
-      },
+      }
+      (Expr::Call(f, g, a), t) => {
+        let f = match &f.x {
+          Expr::Ctx(ctx) => ctx,
+          Expr::Extern => return,
+          _ => unreachable!(),
+        };
+        //panic!();
+      }
       (Expr::Counter, Ty::Prim(Prim::Int(true))) => (),
       (
         Expr::AssignOp(..)
         | Expr::Assign(..)
         | Expr::Block(..)
-        | Expr::Ret
+        | Expr::Ret(..)
         | Expr::Brk
-        | Expr::IfElse
-        | Expr::If
+        | Expr::If(..)
         | Expr::While
         | Expr::Forever
         | Expr::Jmp
@@ -1176,7 +1228,7 @@ impl Node {
         Ty::Void,
       ) => (),
       (Expr::This | Expr::Arg | Expr::Va, t) => {
-        assert_eq!(self.t, t, "{:?}", self)
+        //assert_eq!(self.t, t, "{:?}", self)
       }
       (Expr::Nil, t) => {
         if let Ty::Ptr(_) = t {
@@ -1191,7 +1243,7 @@ impl Node {
   }
 
   pub fn try_solve(&self, a: bool) {
-    // println!("Solving {:?}", self.x.name());
+    //println!("Solving {:?} {:?}", self.x.name(), self.t);
     match &self.x {
       Expr::Let(x) => x.try_solve(a),
 
@@ -1204,17 +1256,16 @@ impl Node {
         assert_eq!(f.represents.gen, g.len());
 
         let sol = f.represents.solve_type_vars_for_params(params);
-
-        //println!("{:?} {:?}  {:?}", sol, f.name, params.iter().map(|n| &n.t).collect::<Vec<_>>());
+        println!("{} {:?}", f.name, sol);
+        //println!("{:?} {:?} {:?}", sol, f.name, params.iter().map(|n| &n.t).collect::<Vec<_>>());
 
         for (l, r) in g.iter().zip(sol.iter()) {
           if let Some(r) = r {
-            xunify(l,r);
+            xunify(l, r);
           }
         }
 
         let args = Ty::agg_subsitute_generics(f.represents.get_args(), g);
-        //println!("Args {:?}", args);
         for (t, n) in args.iter().zip(params.iter()) {
           println!("{:?}", n.x.name());
           n.unify_ty(t);
@@ -1238,65 +1289,94 @@ impl Node {
 
             for (l, r) in g.iter().zip(sol.iter()) {
               if let Some(r) = r {
-                xunify(l,r);
+                xunify(l, r);
               }
             }
-            
+
             // let tys = Ty::agg_subsitute_generics(&t.types, g);
             // for (t, n) in tys.iter().zip(m.iter()) {
-            //   n.unify_ty(t);
+            //  n.unify_ty(t);
             // }
 
-            //If the solution gave us the previously unknown type variables 
+            //If the solution gave us the previously unknown type variables
             if g.iter().filter(|t| t.solved()).count() == t.gen {
               self.unify_ty(&Ty::Gadt(t.clone(), g.clone()))
             }
           }
-          _ => unimplemented!()
+          _ => unimplemented!(),
         }
       }
-      Expr::Subscript(l,r) |
-      Expr::AssignOp(_, l, r) |
-      Expr::Assign(l, r) |
-      Expr::Binary(_, l, r) |
-      Expr::Range(l, r) => {
+      Expr::Subscript(l, r)
+      | Expr::AssignOp(_, l, r)
+      | Expr::Assign(l, r)
+      | Expr::Binary(_, l, r)
+      | Expr::Range(l, r) => {
         l.try_solve(a);
         r.try_solve(a);
       }
-
-      Expr::Ctx(ctx)  => {
+      Expr::IfElse(c, t, f) => {
+        c.try_solve(a);
+        t.try_solve(a);
+        f.try_solve(a);
+      }
+      Expr::If(c, t) => {
+        c.try_solve(a);
+        t.try_solve(a);
+      }
+      Expr::Ctx(ctx) => {
         println!("{}", ctx.name);
         panic!()
       }
-      Expr::Lambda(.., r) |
-      Expr::Unary(.., r) |
-      Expr::Index(r, ..) |
-      Expr::Field(r, ..) |
-      Expr::Var(.., r) | 
-      Expr::Cast(.., r) => r.try_solve(a),
-      Expr::Block(v) => {
-        for x in v { x.try_solve(a) }
+      Expr::Field(r, s) => {
+        let mut t = &r.t;
+        while let Ty::Ptr(tt) = t {
+          t = tt;
+        }
+
+        if let Ty::Adt(t) = t {
+          if let Some(t) = t.get_mem_ty(s) {
+            xunify(&self.t, &t);
+          }
+        } else if let Ty::Gadt(t, g) = t {
+          if let Some(t) = t.get_mem_ty(s) {
+            let t = t.subsitute_generics(&g);
+            xunify(&self.t, &t);
+          }
+        } else {
+          panic!()
+        }
       }
-      Expr::Literal(..) |
-      Expr::This |
-      Expr::Nil |
-      Expr::Arg |
-      Expr::Va |
-      Expr::Accumulator |
-      Expr::Ret |
-      Expr::Brk |
-      Expr::IfElse |
-      Expr::If |
-      Expr::While |
-      Expr::Forever |
-      Expr::Jmp |
-      Expr::For |
-      Expr::Type |
-      Expr::Extern |
-      Expr::Label |
-      Expr::Skip |
-      Expr::Counter => ()
+      Expr::Lambda(.., r)
+      | Expr::Unary(.., r)
+      | Expr::Index(r, ..)
+      | Expr::Var(.., r)
+      | Expr::Ret(Some(r))
+      | Expr::Cast(.., r) => r.try_solve(a),
+      Expr::Block(v) => {
+        for x in v {
+          x.try_solve(a)
+        }
+      }
+      Expr::Ret(None)
+      | Expr::Literal(..)
+      | Expr::This
+      | Expr::Nil
+      | Expr::Arg
+      | Expr::Va
+      | Expr::Accumulator
+      | Expr::Brk
+      | Expr::While
+      | Expr::Forever
+      | Expr::Jmp
+      | Expr::For
+      | Expr::Type
+      | Expr::Extern
+      | Expr::Label
+      | Expr::Skip
+      | Expr::Counter => (),
     }
-    if a { assert!(self.t.solved(), "{:?} {:?}", self.x, self.t) }
+    if a {
+      assert!(self.t.solved(), "{:?} {:?}", self.x, self.t)
+    }
   }
 }

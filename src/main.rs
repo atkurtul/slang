@@ -17,16 +17,12 @@ pub type Sstr = &'static str;
 
 fn main() {
   let allocator = Bump::new();
-  ast::parse_file("tests/test0.sl");
-  let (src, file) = ast::parse_file("tests/test3.sl");
 
-  
+  let (src, file) = ast::parse_file("tests/test3.sl");
   let top = lower::Context::new(file);
   //println!("{:#?}", top);
   for (k, v) in top.below {
-    if k == "main" {
-      println!("{:#?}", v.nodes);
-    }
+    println!("{:#?}", v.nodes);
   }
   // for (k, v) in top.assocs {
   //   for f in v {
@@ -42,6 +38,7 @@ mod tests {
     let top = crate::lower::Context::new(file);
   }
   #[test]fn vk() {parse_quick("tests/vk.sl");}
+  #[test]fn tree() {parse_quick("tests/tree.sl");}
   #[test]fn hello_world() {parse_quick("tests/helloworld.sl");}
   #[test]fn test0() {parse_quick("tests/test0.sl");}
   #[test]fn test1() {parse_quick("tests/test1.sl");}

@@ -1,0 +1,194 @@
+alloc [None]
+alloc [None]
+[]
+[
+    Node {
+        t: Void,
+        x: If(
+            Node {
+                t: Prim(
+                    Bool,
+                ),
+                x: Binary(
+                    Eq,
+                    Node {
+                        t: Ptr(
+                            Adt(
+                                Node,
+                            ),
+                        ),
+                        x: Unary(
+                            Deref,
+                            Node {
+                                t: Ptr(
+                                    Ptr(
+                                        Adt(
+                                            Node,
+                                        ),
+                                    ),
+                                ),
+                                x: Var(
+                                    "node",
+                                    Node {
+                                        t: Ptr(
+                                            Ptr(
+                                                Adt(
+                                                    Node,
+                                                ),
+                                            ),
+                                        ),
+                                        x: Arg,
+                                    },
+                                ),
+                            },
+                        ),
+                    },
+                    Node {
+                        t: Ptr(
+                            Adt(
+                                Node,
+                            ),
+                        ),
+                        x: Nil,
+                    },
+                ),
+            },
+            Node {
+                t: Void,
+                x: Block(
+                    [
+                        Node {
+                            t: Void,
+                            x: Assign(
+                                Node {
+                                    t: Ptr(
+                                        Adt(
+                                            Node,
+                                        ),
+                                    ),
+                                    x: Unary(
+                                        Deref,
+                                        Node {
+                                            t: Ptr(
+                                                Ptr(
+                                                    Adt(
+                                                        Node,
+                                                    ),
+                                                ),
+                                            ),
+                                            x: Var(
+                                                "node",
+                                                Node {
+                                                    t: Ptr(
+                                                        Ptr(
+                                                            Adt(
+                                                                Node,
+                                                            ),
+                                                        ),
+                                                    ),
+                                                    x: Arg,
+                                                },
+                                            ),
+                                        },
+                                    ),
+                                },
+                                Node {
+                                    t: Ptr(
+                                        Adt(
+                                            Node,
+                                        ),
+                                    ),
+                                    x: Call(
+                                        Node {
+                                            t: Func(
+                                                [],
+                                                Ptr(
+                                                    Gen(
+                                                        0,
+                                                    ),
+                                                ),
+                                                false,
+                                            ),
+                                            x: Ctx(
+                                                alloc,
+                                            ),
+                                        },
+                                        [
+                                            Var(
+                                                TypeVariable(
+                                                    {},
+                                                ),
+                                            ),
+                                        ],
+                                        [],
+                                    ),
+                                },
+                            ),
+                        },
+                        Node {
+                            t: Void,
+                            x: Assign(
+                                Node {
+                                    t: Prim(
+                                        Int(
+                                            true,
+                                        ),
+                                    ),
+                                    x: Field(
+                                        Node {
+                                            t: Ptr(
+                                                Ptr(
+                                                    Adt(
+                                                        Node,
+                                                    ),
+                                                ),
+                                            ),
+                                            x: Var(
+                                                "node",
+                                                Node {
+                                                    t: Ptr(
+                                                        Ptr(
+                                                            Adt(
+                                                                Node,
+                                                            ),
+                                                        ),
+                                                    ),
+                                                    x: Arg,
+                                                },
+                                            ),
+                                        },
+                                        "val",
+                                    ),
+                                },
+                                Node {
+                                    t: Prim(
+                                        Int(
+                                            true,
+                                        ),
+                                    ),
+                                    x: Var(
+                                        "val",
+                                        Node {
+                                            t: Prim(
+                                                Int(
+                                                    true,
+                                                ),
+                                            ),
+                                            x: Arg,
+                                        },
+                                    ),
+                                },
+                            ),
+                        },
+                        Node {
+                            t: Void,
+                            x: Ret(
+                                None,
+                            ),
+                        },
+                    ],
+                ),
+            },
+        ),
+    },
+]
