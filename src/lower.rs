@@ -468,16 +468,17 @@ impl Context {
     let mut ctx = Context::default();
     ctx.collect(&x);
     ctx.nodes = ctx.lowerv(&x);
-    ctx.check();
+    ctx.check(false);
+    ctx.check(true);
     ctx
   }
 
-  fn check(&self) {
-    self.nodes.iter().for_each(|x| x.try_solve());
-    self.below.iter().for_each(|(_, x)| x.check());
+  fn check(&self, a: bool) {
+    self.nodes.iter().for_each(|x| x.try_solve(a));
+    self.below.iter().for_each(|(_, x)| x.check(a));
     self.assocs
       .iter()
-      .for_each(|(_, x)| x.iter().for_each(|x| x.check()));
+      .for_each(|(_, x)| x.iter().for_each(|x| x.check(a)));
   }
 
   pub fn collect(&mut self, x: &Vec<ast::Expr>) {
@@ -1089,6 +1090,7 @@ impl Node {
         //println!("HERE");
         n.unify_ty(&Ty::Ptr(Rc::new(t)));
       }
+      (Expr::Var(_, n), _) |
       (Expr::Unary(_, n), _) => n.unify_ty(t),
       (Expr::Binary(o, l, r), _) => match o {
         Binop::Lt
@@ -1144,15 +1146,16 @@ impl Node {
     xunify(&self.t, t);
   }
 
-  pub fn try_solve(&self) {
+  pub fn try_solve(&self, a: bool) {
     // println!("Solving {:?}", self.x.name());
     match &self.x {
-      Expr::Let(x) => x.try_solve(),
+      Expr::Let(x) => x.try_solve(a),
 
       Expr::Call(f, g, params) => {
         let f = match &f.x {
           Expr::Ctx(ctx) => ctx,
-          _ => unreachable!()
+          Expr::Extern => return,
+          _ => unreachable!(),
         };
         assert_eq!(f.represents.gen, g.len());
 
@@ -1166,13 +1169,15 @@ impl Node {
           }
         }
 
-        let tys = Ty::agg_subsitute_generics(f.represents.get_args(), g);
-        for (t, n) in tys.iter().zip(params.iter()) {
+        let args = Ty::agg_subsitute_generics(f.represents.get_args(), g);
+        //println!("Args {:?}", args);
+        for (t, n) in args.iter().zip(params.iter()) {
+          println!("{:?}", n.x.name());
           n.unify_ty(t);
         }
 
         if let (Some(ret), g) = f.represents.deduce_ret_from(params) {
-          //println!("Ret deduced amk");
+          //println!("Ret deduced amk {:?}", ret);
           self.unify_ty(&ret);
         }
         //panic!()
@@ -1211,8 +1216,8 @@ impl Node {
       Expr::Assign(l, r) |
       Expr::Binary(_, l, r) |
       Expr::Range(l, r) => {
-        l.try_solve();
-        r.try_solve();
+        l.try_solve(a);
+        r.try_solve(a);
       }
 
       Expr::Ctx(ctx)  => {
@@ -1224,9 +1229,9 @@ impl Node {
       Expr::Index(r, ..) |
       Expr::Field(r, ..) |
       Expr::Var(.., r) | 
-      Expr::Cast(.., r) => r.try_solve(),
+      Expr::Cast(.., r) => r.try_solve(a),
       Expr::Block(v) => {
-        for x in v { x.try_solve() }
+        for x in v { x.try_solve(a) }
       }
       Expr::Literal(..) |
       Expr::This |
@@ -1248,6 +1253,6 @@ impl Node {
       Expr::Skip |
       Expr::Counter => ()
     }
-    assert!(self.t.solved(), "{:?} {:?}", self.x.name(), self.t)
+    if a { assert!(self.t.solved(), "{:?} {:?}", self.x, self.t) }
   }
 }

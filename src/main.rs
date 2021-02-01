@@ -15,10 +15,10 @@ pub use memory::defo;
 pub type Sstr = &'static str;
 
 
-
 fn main() {
   let allocator = Bump::new();
-  let (src, file) = ast::parse_file("tests/test2.sl");
+  ast::parse_file("tests/test0.sl");
+  let (src, file) = ast::parse_file("tests/test3.sl");
 
   
   let top = lower::Context::new(file);
@@ -34,3 +34,19 @@ fn main() {
   //   }
   // }
 }
+
+
+
+mod tests {
+  fn parse_quick(src: &str) {
+    let (src, file) = crate::ast::parse_file(src);
+    let top = crate::lower::Context::new(file);
+  }
+  #[test]fn hello_world() {parse_quick("tests/helloworld.sl");}
+  #[test]fn test0() {parse_quick("tests/test0.sl");}
+  #[test]fn test1() {parse_quick("tests/test1.sl");}
+  #[test]fn test3() {parse_quick("tests/test3.sl");}
+  #[cfg(not(debug_assertions))]
+  #[test]fn test2() {parse_quick("tests/test2.sl");}
+}
+

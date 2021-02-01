@@ -229,9 +229,11 @@ impl SymbolTable {
 
     pub fn get_adt(&self, s: Sstr) -> Ty {
         //println!("Querying sym {}", n);
-        for (x, var) in self.type_vars.last().unwrap().iter().enumerate() {
-            if *var == s {
-                return Ty::Gen(x);
+        if let Some(v) = self.type_vars.last() {
+            for (x, var) in v.iter().enumerate() {
+                if *var == s {
+                    return Ty::Gen(x);
+                }
             }
         }
         return Ty::Adt(s);

@@ -8,7 +8,7 @@ fn main {
 	vkEnumerateInstanceExtensionProperties(nil, &count, props);
 }
 
-fn sizeof[Ty] -> long {
+fn sizeof[T] -> long {
 
 }
 
