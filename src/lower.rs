@@ -58,10 +58,9 @@ pub enum Ty {
   Ptr(Rc<Ty>),
   Array(usize, Rc<Ty>),
   Func(Rc<[Ty]>, Rc<Ty>, bool),
-
+  // Alias(Rc<Ty>),
   Adt(Rc<Adt>),
   Gadt(Rc<Adt>, Rc<[Ty]>),
-
   Gen(usize),
   Var(TypeVariable),
 }
@@ -99,6 +98,7 @@ impl Ty {
       Ty::Gadt(t, g) => {
         g.iter().for_each(|t| t.deps(bit))
       },
+      //Ty::Alias(t) => t.deps(bit),
       Ty::Var(t) => {
         panic!();
       },
@@ -132,6 +132,8 @@ impl Ty {
         assert_eq!(t, t1);
         Ty::agg_gather(g, g1, map);
       },
+      //(l, Ty::Alias(t)) => l.gather(t, map),
+      //(Ty::Alias(l), t) => l.gather(t, map),
       _ => (),
     }
   }
@@ -155,12 +157,17 @@ impl Ty {
       Ty::Gadt(t, g) => {
         Ty::Gadt(t.clone(), Ty::agg_subsitute_generics(g, map))
       }
+      //Ty::Alias(t) => t.subsitute_generics(map),
       _ => panic!("{:?}", self),
     }
   }
 
   pub fn satisfies(&self, r: &Ty) -> bool {
+    // if let Ty::Alias(t) = r {
+    //   return self.satisfies(t);
+    // }
     match self {
+      //Ty::Alias(t) => t.satisfies(r),
       Ty::Gen(..) => true,
       Ty::Adt(st0) => match r {
         Ty::Adt(st1) => st0 == st1,
@@ -226,9 +233,21 @@ impl Ty {
       ast::Ty::Slice(t) => Ty::Slice(Ty::boxed(t, ctx)),
       ast::Ty::Ptr(t) => Ty::Ptr(Ty::boxed(t, ctx)),
       ast::Ty::Array(l, t) => Ty::Array(*l, Ty::boxed(t, ctx)),
-      ast::Ty::Adt(s) => Ty::Adt(ctx.find_named_type(s).expect(s)),
+      ast::Ty::Adt(s) => {
+        if let Some(st) = ctx.find_named_type(s) {
+          Ty::Adt(st)
+        } else {
+          ctx.find_alias(s).expect(s)
+        }
+      }
+      ast::Ty::Gadt(s, g) => {
+        if let Some(st) = ctx.find_named_type(s) {
+          Ty::Gadt(st, Ty::agg(g, ctx))
+        } else {
+          ctx.find_alias(s).unwrap()
+        }
+      }
       ast::Ty::Gen(x) => Ty::Gen(*x),
-      ast::Ty::Gadt(n, g) => Ty::Gadt(ctx.find_named_type(n).unwrap(), Ty::agg(g, ctx)),
       ast::Ty::Func(args, ret, va) => Ty::Func(Ty::agg(args, ctx), Ty::boxed(ret, ctx), *va),
     }
   }
@@ -248,6 +267,7 @@ impl Ty {
       Ty::Func(args, ret, _) => {
         args.iter().fold(true, |x, y| x && y.solved()) && ret.solved()
       }
+      //Ty::Alias(t) => t.solved(),
       Ty::Var(_) => false,
     }
   }
@@ -381,6 +401,7 @@ pub struct Context {
   pub below: Map<Sstr, Rc<Context>>,
   pub assocs: Map<Sstr, Vec<Rc<Context>>>,
   pub records: Map<Sstr, Rc<Adt>>,
+  pub aliases: Map<Sstr, Ty>,
   pub extsymbols: Map<Sstr, Rc<Node>>,
   pub locals: VarStack,
   pub labels: Set<Sstr>,
@@ -501,7 +522,13 @@ impl Context {
             sum: *sum,
           });
           if let Some(st) = self.records.insert(name, st) {
-            panic!();
+            panic!("Duplicate definition {}", name);
+          }
+        },
+        ast::Expr::Alias(t, n) => {
+          println!("Aliasing {}",n);
+          if let Some(st) = self.aliases.insert(n, Ty::Void) {
+            panic!("Duplicate alias {}", n);
           }
         }
         _ => (),
@@ -568,6 +595,9 @@ impl Context {
           //Initialize the fields for real this time
           let types = mems.into_iter().map(|t| Ty::new(t, self)).collect();
           ptr::<Adt>(&**self.records.get_mut(name).unwrap()).types = types;
+        },
+        ast::Expr::Alias(t, n) => {
+          *ptr(self).aliases.get_mut(n).unwrap() = Ty::new(t, self);
         }
         _ => (),
       }
@@ -607,6 +637,16 @@ impl Context {
       Some(ctx)
     } else if let Some(ctx) = self.above {
       unsafe { (*ctx).find_assoc(st) }
+    } else {
+      None
+    }
+  }
+
+  fn find_alias(&self, s: Sstr) -> Option<Ty> {
+    if let Some(t) = self.aliases.get(s) {
+      Some(t.clone())
+    } else if let Some(ctx) = self.above {
+      unsafe { (*ctx).find_alias(s) }
     } else {
       None
     }
@@ -678,7 +718,7 @@ impl Context {
 
       ast::Expr::Literal(n) => Node::new(
         match n {
-          Literal::Int(_) => Ty::Prim(Prim::Int),
+          Literal::Int(_) => Ty::Prim(Prim::Int(true)),
           Literal::Real(_) => Ty::Prim(Prim::Real),
           Literal::Str(_) => Ty::Prim(Prim::Str),
         },
@@ -738,7 +778,7 @@ impl Context {
         Node::new(Ty::Var(defo()), Expr::Accumulator)
       }
 
-      ast::Expr::Counter => Node::new((Ty::Prim(Prim::Long)), Expr::Counter),
+      ast::Expr::Counter => Node::new((Ty::Prim(Prim::Long(true))), Expr::Counter),
 
       ast::Expr::AssignOp(op, l, r) => {
         let l = self.lower(l);
@@ -795,6 +835,10 @@ impl Context {
         l.unify_ty(&r.t);
         Node::new(Ty::Var(defo()), Expr::Range(l, r))
       }
+
+      ast::Expr::Alias(..) => {
+        Node::new(Ty::Void, Expr::Skip)
+      },
 
       ast::Expr::Call(l, g, r) => {
         let l = self.lower(l);
@@ -1014,11 +1058,11 @@ impl Context {
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Adt {
-  name: Sstr,
+  name:  Sstr,
   names: Box<[Sstr]>,
   types: Box<[Ty]>,
-  gen: usize,
-  sum: bool,
+  gen:   usize,
+  sum:   u8,
 }
 
 
@@ -1111,7 +1155,7 @@ impl Node {
           n.unify_ty(t);
         }
       },
-      (Expr::Counter, Ty::Prim(Prim::Int)) => (),
+      (Expr::Counter, Ty::Prim(Prim::Int(true))) => (),
       (
         Expr::AssignOp(..)
         | Expr::Assign(..)

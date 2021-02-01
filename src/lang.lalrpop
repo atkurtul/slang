@@ -95,6 +95,7 @@ Statements: Expr = {
   Func,
   Type,
   Extern,
+  "alias" <Ty> <Ident> => Expr::Alias(<>),
 }
 
 PushIdent: Sstr = Ident => (table.add_sym(&<>), <>).1;
@@ -138,9 +139,10 @@ Func: Expr = {
   }
 }
 
-SumType: bool = {
-  "type"  => false,
-  "enum" => true,
+SumType: u8 = {
+  "type"  => 0,
+  "enum"  => 1,
+  "union"  => 2,
 }
 
 Type: Expr = {
@@ -322,10 +324,12 @@ extern {
     "->" => Tok::Arrow,
     "=>" => Tok::FatArrow,
     "extern" => Tok::Kwextern,
+    "alias" => Tok::Kwalias,
     "self" => Tok::Kwself,
     "nil" => Tok::Kwnil,
     "type" => Tok::Kwty, 
     "enum" => Tok::Kwenum, 
+    "union" => Tok::Kwunion, 
     "fn" => Tok::Kwfn, 
     "let" => Tok::Kwlet,
     "ret" => Tok::Kwret,

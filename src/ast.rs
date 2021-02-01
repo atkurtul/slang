@@ -109,6 +109,8 @@ pub enum Expr {
 
     Extern(Vec<(Sstr, Ty)>),
 
+    Alias(Ty, Sstr),
+
     Func {
         va: Option<Sstr>,
         name: Sstr,
@@ -121,7 +123,7 @@ pub enum Expr {
     },
 
     Type {
-        sum: bool,
+        sum: u8,
         name: Sstr,
         mems: Vec<Ty>,
         names: Vec<Sstr>,

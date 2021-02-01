@@ -1,0 +1,38 @@
+{
+    "name": "slang",
+    "displayName": "slang",
+    "description": "slang",
+    "publisher": "atkurtul",
+    "version": "0.0.22",
+    "engines": {
+        "vscode": "^1.52.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "slang",
+                "aliases": [
+                    "slang",
+                    "slang"
+                ],
+                "extensions": [
+                    ".sl"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "slang",
+                "scopeName": "source.slang",
+                "path": "./syntaxes/slang.tmLanguage.json"
+            }
+        ]
+    },
+    "dependencies": {
+        "vsce": "^1.84.0"
+    }
+}
