@@ -1021,7 +1021,7 @@ impl Node {
 
   pub fn try_solve(&self) {
     match &self.x {
-      Expr::Let(x) => x.try_solve(),
+      // Expr::Let(x) => x.try_solve(),
       Expr::Aggregate(x) => {
         match x {
           Aggregate::Struct(t, g, _, m) if g.len() > 0 => {
@@ -1030,7 +1030,7 @@ impl Node {
             assert_eq!(t.gen, g.len());
 
             let sol = t.solve_type_vars_for_members(m);
-            
+
             for (l, r) in g.iter().zip(sol.iter()) {
               if let Some(r) = r {
                 xunify(l,r);
