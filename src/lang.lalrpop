@@ -179,7 +179,6 @@ Lambdahead: Vec<(Sstr, Option<Ty>)> = ">" <(<PushIdent> <Ty?> ",")*>;
 
 Expr: Expr  = {
   Logor,
-  <P<Logor>> "..." <P<Expr>> => Expr::Fold,
   <P<Logor>> ".." <P<Logor>> => Expr::Range(<>),
   Scope <Lambdahead> <P<Block>>    Descope => Expr::Lambda(<>),
   Scope <Lambdahead> ":" <P<Expr>> Descope => Expr::Lambda(<>),

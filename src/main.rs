@@ -18,15 +18,19 @@ pub type Sstr = &'static str;
 
 fn main() {
   let allocator = Bump::new();
-  let (src, file) = ast::parse_file("tests/test1.sl");
+  let (src, file) = ast::parse_file("tests/test2.sl");
 
   
   let top = lower::Context::new(file);
   //println!("{:#?}", top);
-
-  for (k, v) in top.assocs {
-    for f in v {
-      //println!("{:#?}", f.nodes);
+  for (k, v) in top.below {
+    if k == "main" {
+      println!("{:#?}", v.nodes);
     }
   }
+  // for (k, v) in top.assocs {
+  //   for f in v {
+  //     println!("{:#?}", f.nodes);
+  //   }
+  // }
 }

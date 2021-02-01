@@ -74,7 +74,6 @@ pub enum Expr {
 
     Accumulator,
     Counter,
-    Fold,
 
     Cast(Ty, Box<Expr>),
 
