@@ -59,8 +59,8 @@ Ty: Ty = {
   "[" <Union> "]" => unroll_production(<>),
   <n:Usize> <t:Ty> => Ty::Array(n, Box::new(t)),
   "*" <Ty> => Ty::Ptr(Box::new(<>)),
-  "(" <args:seq0<Ty>> ")" <re:("->" <Ty>)?> => {
-    Ty::Func(args, Box::new(re.unwrap_or(Ty::Void)))
+  "(" <args:seq0<Ty>> <va:"..."?> ")" <re:("->" <Ty>)?> => {
+    Ty::Func(args, Box::new(re.unwrap_or(Ty::Void)), va.is_some())
   },
 }
 
@@ -144,7 +144,7 @@ SumType: bool = {
 }
 
 Type: Expr = {
-  <sum:SumType> <name:Ident> <gen:Generics> BlockL  <mems:seq0<(<Ident> <Ty>)>> BlockR
+  <sum:SumType> <name:Ident> <gen:Generics> BlockL  <mems:(<Ident> <Ty>)*> BlockR
   DescopeGenerics => {
     let (names, mems) = mems.into_iter().unzip();
     Expr::Type {
@@ -189,12 +189,16 @@ Expr: Expr  = {
   "jmp" <P<Expr>> BlockL <seq1<(Scope <Pattern> "=>" <Expr> Descope)>> BlockR => Expr::Jmp(<>),
 }
 
+#[inline]
+MbyGen: Vec<Ty> = {
+  <(GenericL <seq1<Ty>> GenericR)?> => <>.unwrap_or_default(),
+}
 //#[inline]
 Aggregate: Aggregate = {
   // ArrayL <seq0<Expr>> ArrayR => Aggregate::Array(<>),
   TupleL <seq0<Expr>> TupleR => Aggregate::Tuple(<>),
-  <Identp> TupleL <seq0<(<Ident> ":" <Logor>)>> TupleR => Aggregate::Struct(<>),
-  <Ident> "::" <Ident> TupleL <seq0<Expr>> TupleR => Aggregate::Constructor(<>),
+  <Identp> <MbyGen> TupleL <seq0<(<Ident> "=" <Logor>)>> TupleR => Aggregate::Struct(<>),
+  <Ident> "::" <MbyGen> <Ident> TupleL <seq0<Expr>> TupleR => Aggregate::Constructor(<>),
   //<Ident> "::" <Ident> => Aggregate::Constructor(<>, vec![]),
 }
 

@@ -1,4 +1,4 @@
-use crate::{*,lower2::*};
+use crate::{*,lower::*};
 
 pub enum Ty {
   Void,
@@ -9,21 +9,21 @@ pub enum Ty {
 
 
 impl Ty {
-  fn agg(t: &Rc<[lower2::Ty]>) -> Rc<[Ty]> {
+  fn agg(t: &Rc<[lower::Ty]>) -> Rc<[Ty]> {
     t.into_iter().map(|t| Ty::new(t)).collect()
   }
 
-  fn newb(t: &Rc<lower2::Ty>) -> Rc<Ty> {
+  fn newb(t: &Rc<lower::Ty>) -> Rc<Ty> {
     Rc::new(Ty::new(t))
   }
 
-  fn new(t: &lower2::Ty) -> Ty {
+  fn new(t: &lower::Ty) -> Ty {
     match t {
-      lower2::Ty::Void => Ty::Void,
-      lower2::Ty::Prim(t) => Ty::Prim(*t),
-      lower2::Ty::Ptr(t) => Ty::Ptr(Ty::newb(t)),
-      lower2::Ty::Tuple(t) => Ty::Agg(Ty::agg(t)),
-      // lower2::Ty::Slice(t) => Ty::Agg(Ty::new(t)),
+      lower::Ty::Void => Ty::Void,
+      lower::Ty::Prim(t) => Ty::Prim(*t),
+      lower::Ty::Ptr(t) => Ty::Ptr(Ty::newb(t)),
+      lower::Ty::Tuple(t) => Ty::Agg(Ty::agg(t)),
+      // lower::Ty::Slice(t) => Ty::Agg(Ty::new(t)),
       _ => unreachable!()
     }
   }

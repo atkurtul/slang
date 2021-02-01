@@ -92,8 +92,11 @@ Int: i32 = {
 Real: f32 = {
  r"[0-9]+[.][0-9]+" => <>.parse().unwrap(),
 }
+
 Prim: Prim = {
-  "bool" => Prim::Bool,
+ "bool" => Prim::Bool,
+ "str" => Prim::Str,
+ 
  "byte" => Prim::Byte,
  "short" => Prim::Short,
  "int" => Prim::Int,
@@ -101,6 +104,7 @@ Prim: Prim = {
  "word" => Prim::Word,
  "real" => Prim::Real,
  "double" => Prim::Double,
+
  r"byte(4|8|16|32|64)" => Prim::Vector(false, 8, <>[4..].parse().unwrap()),
  r"short(2|4|8|16|32)" => Prim::Vector(false, 16, <>[5..].parse().unwrap()),
  r"int(2|4|8|16)" => Prim::Vector(false, 32, <>[3..].parse().unwrap()),

@@ -1,16 +1,15 @@
 pub use crate::Sstr;
 
-pub use crate::lexer::{Tok, Loc, Binop, Prim};
+pub use crate::lexer::{Binop, Loc, Prim, Tok};
 pub use crate::memory::*;
 use fxhash::*;
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Aggregate<T=Expr> {
-    Constructor(Sstr, Sstr, Vec<T>),
-    Struct(Sstr, Vec<(Sstr, T)>),
-    Tuple(Vec<T>),
-    Array(Vec<T>),
+pub enum Aggregate {
+    Constructor(Sstr, Vec<Ty>, Sstr, Vec<Expr>),
+    Struct(Sstr, Vec<Ty>, Vec<(Sstr, Expr)>),
+    Tuple(Vec<Expr>),
+    Array(Vec<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,16 +34,16 @@ pub enum Ty {
     Ptr(Box<Ty>),
     Array(usize, Box<Ty>),
     Adt(Sstr),
-    Gen(usize, usize),
+    Gen(usize),
     Gadt(Sstr, Vec<Ty>),
-    Func(Vec<Ty>, Box<Ty>),
+    Func(Vec<Ty>, Box<Ty>, bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Binding {
     Ignore,
     Ident(Sstr),
-    Tuple(Vec<Binding>)
+    Tuple(Vec<Binding>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,12 +71,11 @@ pub enum Expr {
     Nil,
     Literal(Literal),
     Var(Sstr),
-    
 
     Accumulator,
     Counter,
     Fold,
-    
+
     Cast(Ty, Box<Expr>),
 
     Binary(Binop, Box<Expr>, Box<Expr>),
@@ -111,32 +109,34 @@ pub enum Expr {
     Label(Sstr),
 
     Extern(Vec<(Sstr, Ty)>),
-    
+
     Func {
-        va:    Option<Sstr>,
-        name:  Sstr,
-        args:  Vec<Ty>,
-        ret:   Ty,
+        va: Option<Sstr>,
+        name: Sstr,
+        args: Vec<Ty>,
+        ret: Ty,
         names: Vec<Sstr>,
-        this:  Option<Ty>,
-        gen:   usize,
-        body:  Vec<Expr>
+        this: Option<Ty>,
+        gen: usize,
+        body: Vec<Expr>,
     },
 
     Type {
-        sum:   bool,
-        name:  Sstr,
-        mems:  Vec<Ty>,
+        sum: bool,
+        name: Sstr,
+        mems: Vec<Ty>,
         names: Vec<Sstr>,
-        gen:   usize,
-    }
+        gen: usize,
+    },
 }
 
 pub fn parse_file(file: &str) -> (Box<String>, Vec<Expr>) {
     let src = Box::<String>::new(std::fs::read_to_string(file).unwrap());
     let tokens = crate::lexer::lex_file(&src).unwrap();
 
-    mod lang { include!(concat!(env!("OUT_DIR"), "/lang.rs")); }
+    mod lang {
+        include!(concat!(env!("OUT_DIR"), "/lang.rs"));
+    }
     let parser = lang::xLangParser::new();
     // let mut table: ptr<symbol_table> = defo_leak();
     // let prox = proxy::new(table, &tokens);
@@ -169,12 +169,12 @@ pub struct SymbolTable {
 
 pub struct TokenProxy {
     table: ptr<SymbolTable>,
-    tokens: ptr<Vec<(Loc,Tok,Loc)>>,
+    tokens: ptr<Vec<(Loc, Tok, Loc)>>,
     idx: usize,
 }
 
 impl TokenProxy {
-    pub fn new(table: &SymbolTable, tokens: &Vec<(Loc,Tok,Loc)>) -> TokenProxy {
+    pub fn new(table: &SymbolTable, tokens: &Vec<(Loc, Tok, Loc)>) -> TokenProxy {
         TokenProxy {
             table: ptr(table),
             tokens: ptr(tokens),
@@ -207,11 +207,11 @@ impl Iterator for TokenProxy {
     }
 }
 
-impl Default for SymbolTable{
+impl Default for SymbolTable {
     fn default() -> Self {
         SymbolTable {
             vars: vec![defo()],
-            type_vars: defo()
+            type_vars: defo(),
         }
     }
 }
@@ -227,14 +227,12 @@ impl SymbolTable {
         }
         return 0;
     }
-    
+
     pub fn get_adt(&self, s: Sstr) -> Ty {
         //println!("Querying sym {}", n);
-        for (x, row) in self.type_vars.iter().enumerate().rev() {
-            for (y, var) in row.iter().enumerate() {
-                if *var == s {
-                    return Ty::Gen(x, y);
-                }
+        for (x, var) in self.type_vars.last().unwrap().iter().enumerate() {
+            if *var == s {
+                return Ty::Gen(x);
             }
         }
         return Ty::Adt(s);
@@ -251,16 +249,16 @@ impl SymbolTable {
     pub fn descope_generics(&mut self) {
         self.type_vars.pop();
     }
-    
-   pub fn clear_type_vars(&mut self) {
+
+    pub fn clear_type_vars(&mut self) {
         self.type_vars.clear();
     }
-    
+
     pub fn add_sym(&mut self, sym: Sstr) {
         //println!("Adding sym {:?}", sym);
         self.vars.last_mut().unwrap().insert(sym);
     }
-    
+
     pub fn add_var(&mut self, var: &Binding) {
         //println!("Adding var {:?}", var);
         match var {
@@ -273,12 +271,12 @@ impl SymbolTable {
             _ => (),
         }
     }
-    
+
     pub fn scope(&mut self) {
         //println!("Scoping");
         self.vars.push(defo());
     }
- 
+
     pub fn descope(&mut self) {
         //println!("Descoping");
         self.vars.pop();
