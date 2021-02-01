@@ -20,7 +20,6 @@ while($core =~ /typedef\s+struct\s+(\w+)\s+\{\s*((.*;\n)*)\s*\}.*?;/g) {
     if ($var) {
       $field = $1;
       $var =~ s/type/ty/g;
-
       $field =~ s/const//g;
       $field =~ s/struct//g;
       $field =~ s/ //g;
@@ -31,7 +30,6 @@ while($core =~ /typedef\s+struct\s+(\w+)\s+\{\s*((.*;\n)*)\s*\}.*?;/g) {
       $field =~ s/char/byte/g;
       $field =~ s/void/[]/g;
       $field =~ s/float/real/g;
-    
       $var ="\t$var $field,";
       say $var;
     }

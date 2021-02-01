@@ -5,7 +5,7 @@ pub use crate::memory::*;
 use fxhash::*;
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Aggregate<T=Expr> {
     Constructor(Sstr, Sstr, Vec<T>),
     Struct(Sstr, Vec<(Sstr, T)>),
@@ -13,7 +13,7 @@ pub enum Aggregate<T=Expr> {
     Array(Vec<T>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Unop {
     Addrof,
     Deref,
@@ -25,7 +25,7 @@ pub enum Unop {
     PostDec,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
     Void,
     Prim(Prim),
@@ -40,21 +40,23 @@ pub enum Ty {
     Func(Vec<Ty>, Box<Ty>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Binding {
     Ignore,
     Ident(Sstr),
     Tuple(Vec<Binding>)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Literal {
     Int(i32),
     Str(Sstr),
     Real(f32),
 }
 
-#[derive(Debug, Clone)]
+impl Eq for Literal {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
     Binding(Binding),
     Struct(Sstr, Vec<(Sstr, Pattern)>),
@@ -63,7 +65,7 @@ pub enum Pattern {
     Literal(Literal),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     //LEAF
     This,

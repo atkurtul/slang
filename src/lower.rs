@@ -5,27 +5,27 @@ use crate::*;
 use fxhash::FxHashMap;
 use fxhash::FxHashSet;
 
-pub type Map<K,V> = FxHashMap<K,V>;
+pub type Map<K, V> = FxHashMap<K, V>;
 pub type Set<K> = FxHashSet<K>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
   Void,
   Prim(Prim),
-  Tuple(Vec<Ty>),
-  Union(Vec<Ty>),
+  Tuple(Box<[Ty]>),
+  Union(Box<[Ty]>),
   Slice(Box<Ty>),
   Ptr(Box<Ty>),
   Array(usize, Box<Ty>),
   Adt(Sstr),
   Gen(usize, usize),
-  Gadt(Sstr, Vec<Ty>),
-  Func(Vec<Ty>, Box<Ty>),
+  Gadt(Sstr, Box<[Ty]>),
+  Func(Box<[Ty]>, Box<Ty>),
   Var(TypeVariable),
 }
 
 impl Ty {
-  pub fn agg(v: Vec<ast::Ty>) -> Vec<Ty> {
+  pub fn agg(v: Vec<ast::Ty>) -> Box<[Ty]> {
     v.into_iter().map(|t| Ty::from(t)).collect()
   }
   pub fn fromb(ty: Box<ast::Ty>) -> Box<Ty> {
@@ -72,7 +72,7 @@ pub enum Expr {
   Index(ptr<Node>, usize),
   Member(ptr<Node>, Sstr),
   Range(ptr<Node>, ptr<Node>),
-  Call(ptr<Context>, Vec<Ty>, Vec<ptr<Node>>),
+  Call(ptr<Node>, Vec<Ty>, Vec<ptr<Node>>),
   Aggregate(Aggregate<ptr<Node>>),
 
   Lambda(Vec<(Sstr, Option<Ty>)>, ptr<Node>),
@@ -80,19 +80,28 @@ pub enum Expr {
 
   Ctx(ptr<Context>),
 
-  Ret,      //(Option<ptr<Node>>),
-  Brk,      //(Option<Sstr>),
-  IfElse,   //(ptr<Node>, ptr<Node>, ptr<Node>),
-  If,       //(ptr<Node>, ptr<Node>),
-  While,    //(ptr<Node>, ptr<Node>),
-  Forever,  //(ptr<Node>),
-  Jmp,      //(ptr<Node>, Vec<(Pattern, Node)>),
-  For,      //(Binding, ptr<Node>, ptr<Node>),
+  Ret,   //(Option<ptr<Node>>),
+  Brk,   //(Option<Sstr>),
+  IfElse, //(ptr<Node>, ptr<Node>, ptr<Node>),
+  If,   //(ptr<Node>, ptr<Node>),
+  While,  //(ptr<Node>, ptr<Node>),
+  Forever, //(ptr<Node>),
+  Jmp,   //(ptr<Node>, Vec<(Pattern, Node)>),
+  For,   //(Binding, ptr<Node>, ptr<Node>),
 
   Let,
   Type,
   Extern,
   Label,
+}
+
+impl Expr {
+  pub fn unwrap_ctx(&self) -> ptr<Context> {
+    match self {
+      Expr::Ctx(ctx) => *ctx,
+      _ => unreachable!()
+    }
+  }
 }
 
 impl Drop for Expr {
@@ -131,34 +140,33 @@ impl Drop for Expr {
         a1.drop_in_place();
       }
       Expr::Call(_, _, a0) => {
-        for x in a0 { 
-          x.drop_in_place(); 
+        for x in a0 {
+          x.drop_in_place();
         }
       }
       // Expr::Ret(a0) => {
-      //   a0.map(|a| a.drop_in_place());
+      //  a0.map(|a| a.drop_in_place());
       // }
       // Expr::IfElse(a0, a1, a2) => {
-      //   a0.drop_in_place();
-      //   a1.drop_in_place();
-      //   a2.drop_in_place();
+      //  a0.drop_in_place();
+      //  a1.drop_in_place();
+      //  a2.drop_in_place();
       // }
       // Expr::If(a0, a1) => {
-      //   a0.drop_in_place();
-      //   a1.drop_in_place();
+      //  a0.drop_in_place();
+      //  a1.drop_in_place();
       // }
       // Expr::While(a0, a1) => {
-      //   a0.drop_in_place();
-      //   a1.drop_in_place();
+      //  a0.drop_in_place();
+      //  a1.drop_in_place();
       // }
       // Expr::For(_, a0, a1) => {
-      //   a0.drop_in_place();
-      //   a1.drop_in_place();
+      //  a0.drop_in_place();
+      //  a1.drop_in_place();
       // }
       // Expr::Ctx(_, a0) => {
-      //   a0.drop_in_place();
+      //  a0.drop_in_place();
       // }
-
       _ => (),
     }
   }
@@ -187,7 +195,10 @@ impl Debug for TypeVariable {
   }
 }
 
-use std::{hash::{Hash, Hasher}, unreachable};
+use std::{
+  hash::{Hash, Hasher},
+  unreachable,
+};
 
 impl Hash for Node {
   fn hash<H>(&self, h: &mut H)
@@ -225,13 +236,13 @@ impl PartialEq<Self> for TypeVariable {
 
 impl Default for ptr<Bump> {
   fn default() -> Self {
-      ptr(0 as _)
+    ptr(0 as _)
   }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct VarStack {
-  pub up:   Option<ptr<VarStack>>,
+  pub up: Option<ptr<VarStack>>,
   pub down: Vec<Box<VarStack>>,
   pub vars: Map<Sstr, Vec<ptr<Node>>>,
 }
@@ -242,7 +253,6 @@ impl VarStack {
   }
 
   pub fn get(&self, n: Sstr) -> Option<ptr<Node>> {
-    //println!("Getting {:?}", n);
     if let Some(v) = self.vars.get(n) {
       Some(*v.last().unwrap())
     } else {
@@ -267,32 +277,28 @@ pub struct Context {
   pub names: Vec<Sstr>,
   pub vars: VarStack,
   pub labels: Vec<Sstr>,
-  pub children: Map<Sstr, Box<Context>>,
-  pub assoc_children: Map<Sstr, Vec<Box<Context>>>,
-  pub parent: Option<ptr<Context>>,
+  pub children: Map<Sstr, ptr<Node>>,
+  pub assoc_children: Map<Sstr, Vec<ptr<Node>>>,
+  pub extern_symbols: Map<Sstr, ptr<Node>>,
+  pub parent: usize,
   pub nodes: Vec<ptr<Node>>,
   pub records: Map<Sstr, Box<Adt>>,
+  pub is_extern: bool,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Adt {
-  sum: bool,
-  name: Sstr,
-  mems: Box<[Ty]>,
-  names: Vec<Sstr>,
-  gen: usize,
+  pub sum: bool,
+  pub name: Sstr,
+  pub mems: Box<[Ty]>,
+  pub names: Vec<Sstr>,
+  pub gen: usize,
 }
-
 
 impl Context {
   pub fn new(bumper: ptr<Bump>) -> Context {
-    Context {
-      bumper,
-      ..defo()
-    }
+    Context { bumper, ..defo() }
   }
-
 
   pub fn begin(bumper: ptr<Bump>, x: Vec<ast::Expr>) -> Context {
     let mut top = Self::new(bumper);
@@ -302,36 +308,60 @@ impl Context {
     top
   }
 
-  fn find_func(&self, f: Sstr) -> ptr<Context> {
+  fn find_func(&self, f: Sstr) -> Option<ptr<Node>> {
     if let Some(ctx) = self.children.get(f) {
-      ptr(ctx.as_ref())
-    } else if let Some(pp) = self.parent {
+      Some(*ctx)
+    } else if self.parent != 0 {
+      let pp = ptr(self.parent as *const Context);
       pp.find_func(f)
     } else {
-      panic!("Cant find {}", f)
+      None
     }
   }
 
-  fn find_var(&mut self, n: Sstr) -> ptr<Node> {
-    if let Some(node) = self.vars.get(n) {
-      //*node.last().unwrap()
-      node
+  fn find_extern(&self, f: Sstr) -> Option<ptr<Node>> {
+
+    if let Some(ctx) = self.extern_symbols.get(f) {
+      Some(*ctx)
+    } else if self.parent != 0 {
+      let pp = ptr(self.parent as *const Context);
+      pp.find_extern(f)
     } else {
-      for (i,s) in self.names.iter().enumerate() {
-        if *s==n {
-          return self.new_node(Some(self.args[i].clone()), Expr::Arg);
-        }
-      }
-      if Some(n) == self.va {
-        return self.new_node(None, Expr::Va);
-      }
-      unreachable!("Cant find var {:?}", n);
+      None
     }
+  }
+  
+  fn find_symbol(&self, n: Sstr)  -> Option<ptr<Node>> {
+    self.find_arg(n).or(self.find_func(n)).or(self.find_extern(n))
+  }
+
+  //TODO: Stop creating nodes
+  fn find_arg(&self, n: Sstr) -> Option<ptr<Node>>  {
+    for (i, s) in self.names.iter().enumerate() {
+      if *s == n {
+        return Some(ptr(self).new_node(Some(self.args[i].clone()), Expr::Arg));
+      }
+    }
+    if Some(n) == self.va {
+      return Some(ptr(self).new_node(None, Expr::Va));
+    }
+    None
+  }
+
+  fn find_var(&self, n: Sstr) -> Option<ptr<Node>> {
+    self.vars.get(n).or(ptr(self).find_arg(n))
   }
 
   pub fn collect(&mut self, x: &Vec<ast::Expr>) {
     for x in x.iter() {
       match x {
+        ast::Expr::Extern(f) => {
+          for (s, ty) in f.into_iter() {
+            let node = self.new_node(Some(Ty::from(ty.clone())), Expr::Extern);
+            self.extern_symbols.insert(s, node);
+            //println!("Inserted extern {}", s);
+          }
+        }
         ast::Expr::Func {
           va,
           body, //Box<Expr>
@@ -342,31 +372,27 @@ impl Context {
           ret,  //Ty,
           names, //Vec<Sstr>,
         } => {
-          let mut ctx = Box::new(Context {
+          let mut ctx = ptr::new(Context {
             bumper: self.bumper,
             name,
             va: *va,
             gen: *gen,
             names: names.clone(),
-            parent: Some(ptr(self)),
-            this : this.clone().map(|t| Ty::from(t)),
+            parent: self as *const Context as usize,
+            this: this.clone().map(|t| Ty::from(t)),
             args: args.into_iter().map(|t| Ty::from(t.clone())).collect(),
             ret: Ty::from(ret.clone()),
-            vars: defo(),
-            labels: defo(),
-            children: defo(),
-            assoc_children: defo(),
-            nodes: defo(),
-            records: defo(),
+            .. defo()
           });
           ctx.collect(&body);
-
+          let ty = Ty::Func(ctx.args.clone(), Box::new(ctx.ret.clone()));
+          let ctx = self.new_node(Some(ty), Expr::Ctx(ctx));
           if this.is_some() {
             self.assoc_children.entry(name).or_default().push(ctx);
           } else {
             self.children.insert(name, ctx);
           }
-        },
+        }
 
         ast::Expr::Type {
           sum,
@@ -378,7 +404,7 @@ impl Context {
           let st = Box::new(Adt {
             name,
             names: defmovref(names),
-            mems:  mems.into_iter().map(|t| Ty::from(t.clone())).collect(),
+            mems: mems.into_iter().map(|t| Ty::from(t.clone())).collect(),
             gen: *gen,
             sum: *sum,
           });
@@ -431,7 +457,6 @@ impl Context {
   }
 
   pub fn lower(&mut self, x: ast::Expr) -> ptr<Node> {
-    
     match x {
       ast::Expr::This => self.new_node(Some(self.this.as_ref().unwrap().clone()), Expr::This),
 
@@ -447,7 +472,7 @@ impl Context {
       ),
 
       ast::Expr::Var(s) => {
-        let node = self.find_var(s);
+        let node = self.find_var(s).unwrap();
         let re = self.new_node(None, Expr::Var(s, node));
         unify(node, re);
         re
@@ -476,9 +501,7 @@ impl Context {
         x
       }
 
-      ast::Expr::Fold => {
-        self.new_node(None, Expr::Accumulator)
-      }
+      ast::Expr::Fold => self.new_node(None, Expr::Accumulator),
 
       ast::Expr::Accumulator => {
         // let l = self.lowerb(x);
@@ -488,14 +511,12 @@ impl Context {
         self.new_node(None, Expr::Accumulator)
       }
 
-      ast::Expr::Counter => {
-        self.new_node(Some(Ty::Prim(Prim::Long)), Expr::Counter)
-      }
+      ast::Expr::Counter => self.new_node(Some(Ty::Prim(Prim::Long)), Expr::Counter),
 
       ast::Expr::AssignOp(op, l, r) => {
         let l = self.lowerb(l);
         let r = self.lowerb(r);
-        unify(l,r);
+        unify(l, r);
         self.new_node(None, Expr::AssignOp(op, l, r))
       }
 
@@ -525,27 +546,32 @@ impl Context {
       ast::Expr::Range(l, r) => {
         let l = self.lowerb(l);
         let r = self.lowerb(r);
-        unify(l,r);
+        unify(l, r);
         self.new_node(None, Expr::Range(l, r))
       }
-      
+
       ast::Expr::Call(l, _, r) => {
         let l = self.lowerb(l);
         match l.ex {
-          _ => ()
+          _ => (),
         }
         let r = self.lowerv(r);
-        //self.new_node(None, Expr::Call(l, vec![], r))
-        self.new_node(None, Expr::This)
+        unreachable!()
       }
 
       ast::Expr::FreeCall(l, _, r) => {
         let r = self.lowerv(r);
-        let f = self.find_func(l);
-        for (x, t) in r.iter().zip(f.args.iter()) {
-          unify_t(*x, ptr(t));
+        let f = self.find_symbol(l).expect(&format!("Cannot find symbol {}", l));
+        match &*f.ty {
+          Ty::Func(args, ret) => {
+            for (x, t) in r.iter().zip(args.iter()) {
+              unify_t(*x, ptr(t));
+            }
+            self.new_node(Some(*ret.clone()), Expr::Call(f, vec![], r))
+          }
+          _ => unreachable!()
         }
-        self.new_node(Some(f.ret.clone()), Expr::Call(f, vec![], r))
+
       }
 
       ast::Expr::Aggregate(v) => match v {
@@ -587,15 +613,15 @@ impl Context {
         let b = self.lowerv(b);
         self.new_node(Some(Ty::Void), Expr::Block(b))
       }
-      
+
       ast::Expr::Ret(x) => {
         let x = x.map(|x| self.lowerb(x));
         self.new_node(Some(Ty::Void), Expr::Ret)
         //self.new_node(Some(Ty::Void), Expr::Ret(x))
       }
-      
+
       ast::Expr::Brk(x) => self.new_node(None, Expr::Brk),
-      
+
       ast::Expr::IfElse(c, t, f) => {
         let c = self.lowerb(c);
         let t = self.lowerb(t);
@@ -603,14 +629,14 @@ impl Context {
         self.new_node(Some(Ty::Void), Expr::IfElse)
         //self.new_node(Some(Ty::Void), Expr::IfElse(c, t, f))
       }
-      
+
       ast::Expr::If(c, t) => {
         let c = self.lowerb(c);
         let t = self.lowerb(t);
         self.new_node(Some(Ty::Void), Expr::If)
         //self.new_node(Some(Ty::Void), Expr::If(c, t))
       }
-      
+
       ast::Expr::While(c, t) => {
         let c = self.lowerb(c);
         let t = self.lowerb(t);
@@ -624,13 +650,13 @@ impl Context {
       }
 
       ast::Expr::Jmp(..) => unreachable!(),
-      
+
       ast::Expr::For(v, x, b) => {
         let x = self.lowerb(x);
 
         self.new_node(Some(Ty::Void), Expr::For)
       }
-      
+
       ast::Expr::Let(v, t, x) => {
         let x = self.lowerb(x);
         let t = t.map(|t| Ty::from(t));
@@ -655,21 +681,23 @@ impl Context {
         ret,  //Ty,
         names, //Vec<Sstr>,
       } => {
-        
         let ctx = if let Some(ctx) = self.children.get_mut(name) {
           ctx
         } else {
           let this = this.map(|t| Ty::from(t));
-          self.assoc_children.get_mut(name).unwrap().iter_mut().find(|ctx| ctx.this == this).unwrap()
+          self.assoc_children
+            .get_mut(name)
+            .unwrap()
+            .iter_mut()
+            .find(|ctx| ctx.ex.unwrap_ctx().this == this )
+            .unwrap()
         };
-
-        ctx.lowerv_as_root(body);
-        let expr = Expr::Ctx(ptr(ctx.as_ref()));
-        self.new_node(Some(Ty::Void), expr)
+        ctx.ex.unwrap_ctx().lowerv_as_root(body);
+        *ctx
       }
-      
+
       ast::Expr::Extern { .. } => self.new_node(Some(Ty::Void), Expr::Extern),
-    
+
       ast::Expr::Type {
         sum,
         name, //Sstr,
@@ -704,11 +732,16 @@ fn unify(left: ptr<Node>, mut right: ptr<Node>) {
   //println!("Unifying {:?} {:?}", left.ty, right.ty);
   let lhs: &mut Ty = left.ty.get_mut();
   let rhs: &mut Ty = right.ty.get_mut();
-  
+
   match (lhs, rhs) {
     (Ty::Var(l), Ty::Var(r)) => {
       if l != r {
-        let new: Set<_> = l.equalities.iter().chain(r.equalities.iter()).cloned().collect();
+        let new: Set<_> = l
+          .equalities
+          .iter()
+          .chain(r.equalities.iter())
+          .cloned()
+          .collect();
         l.equalities = new;
         right.ty.drop_in_place();
         right.ty = left.ty;

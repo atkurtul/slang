@@ -49,7 +49,7 @@ pub enum Tok {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Prim {
-  Vector(bool, u8, u8),
+  Bool,
   Byte,
   Short,
   Int,
@@ -58,9 +58,10 @@ pub enum Prim {
   Real,
   Double,
   Str,
+  Vector(bool, u8, u8),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Binop {
   Add,
   Sub,
