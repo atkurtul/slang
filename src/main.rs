@@ -17,7 +17,7 @@ pub type Sstr = &'static str;
 
 fn main() {
   let allocator = Bump::new();
-  let (src, file) = ast::parse_file("tests/test3.sl");
+  let (src, file) = ast::parse_file("tests/test4.sl");
   let top = lower2::Context::new(file);
   //println!("{:#?}", top);
   for (k, v) in top.inner.below.iter() {

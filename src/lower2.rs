@@ -4,6 +4,7 @@ use crate::memory::*;
 use crate::*;
 use fxhash::FxHashMap;
 use fxhash::FxHashSet;
+use core::panic;
 use std::collections::BTreeSet;
 use std::{collections::BTreeMap, iter::Skip};
 use std::{
@@ -19,6 +20,16 @@ pub type Set<K> = BTreeSet<K>;
 pub struct Node {
   pub t: Option<Ty>,
   pub x: Expr,
+}
+
+fn solve_agg_for(agg: &[Ty], input: &[Rc<Node>], g:usize) -> Vec<Option<Ty>> {
+  assert_eq!(input.len(), agg.len());
+  let tys = input.iter().map(|n| &n.t).collect::<Vec<_>>();
+  let mut re: Vec<Option<Ty>> = vec![None; g];
+  agg.iter()
+    .zip(tys.iter())
+    .for_each(|(t0, t1)| t0.gather_opt(t1, &mut re));
+  re
 }
 
 fn solve_agg(s: &Rc<Adt>, g: &Rc<[Option<Ty>]>,  x: &Vec<Rc<Node>>) {
@@ -52,6 +63,7 @@ impl Node {
   fn refresh(&self) {
     use Expr::*;
     match &self.x {
+
       Expr::Var(_, n) => {
         n.refresh();
         self.mby_enforce(n);
@@ -64,7 +76,16 @@ impl Node {
         }
       }
 
-      Expr::AssignOp(_, l, r) | Expr::Assign(l, r) | Expr::Range(l, r) => {
+      Expr::Range(l, r) => {
+        l.mby_enforce(r);
+        l.refresh();
+        r.refresh();
+        if let Some(t) = l.t.as_ref().or(r.t.as_ref()).cloned() {
+          self.enforce(&Ty::Slice(Rc::new(t)));
+        }
+      }
+
+      Expr::AssignOp(_, l, r) | Expr::Assign(l, r)  => {
         l.mby_enforce(r);
         l.refresh();
         r.refresh();
@@ -149,10 +170,13 @@ impl Node {
         f.refresh();
         a.iter().for_each(|x| x.refresh());
 
-        let f = match &f.x {
-          Expr::Callable(Invoke::Ctx(ctx)) => &ctx.func,
+        let (f, this) = match &f.x {
+          Expr::Callable(Invoke::Ctx(ctx)) => (&ctx.func, None),
+          Expr::Callable(Invoke::Assoc(_, ctx)) => {
+            (&ctx.func, None)
+          }
           Expr::Extern => return,
-          Expr::Callable(Invoke::Method(n, f)) => {
+          Expr::Callable(Invoke::ConstraintMethod(n, f)) => {
             if let Some(t) = &self.t {
               f.set_ret(t.clone());
             }
@@ -161,7 +185,7 @@ impl Node {
                 f.set_arg(i, t.clone());
               }
             }
-            &f
+            (f, Some(1))
           }
           _ => unreachable!()
         };
@@ -177,7 +201,7 @@ impl Node {
           }
         }
 
-        if let (Some(ret), g) = f.deduce_ret_from(a) {
+        if let (Some(ret), g) = f.deduce_ret_from(a, None) {
           self.enforce(&ret);
         }
       }
@@ -205,7 +229,7 @@ impl Node {
 
   fn enforce(&self, t: &Ty) {
     if let Some(ty) = &self.t {
-      assert_eq!(ty, t);
+      assert_eq!(ty, t, "{:?}", self.x);
     } else {
       //println!("Lol wut xd");
       ptr(self).t = Some(t.clone());
@@ -232,7 +256,9 @@ impl Node {
 
       Expr::Range(l, r) => {
         l.mby_enforce(r);
-        l.t.as_ref().map(|t| self.enforce(&Ty::Slice(Rc::new(t.clone()))));
+        // if self.t.is_none() {
+        //   l.t.as_ref().map(|t| self.enforce(&Ty::Slice(Rc::new(t.clone()))));
+        // }
       }
 
       Expr::Iter(n) => {
@@ -288,7 +314,7 @@ impl Node {
         let f = match &f.x {
           Expr::Callable(Invoke::Ctx(ctx)) => &ctx.func,
           Expr::Extern => return,
-          Expr::Callable(Invoke::Method(n, f)) => {
+          Expr::Callable(Invoke::ConstraintMethod(n, f)) => {
             if let Some(t) = &self.t {
               f.set_ret(t.clone());
             }
@@ -733,7 +759,8 @@ pub struct ContextData {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Invoke {
   Ctx(Rc<Context>),
-  Method(Rc<Node>, Func),
+  Assoc(Rc<Node>, Rc<Context>),
+  ConstraintMethod(Rc<Node>, Func),
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -762,7 +789,7 @@ impl Context {
       v.iter().for_each(|ctx| ctx.assert_sane());
     }
     for x in self.nodes.iter().flat_map(|x| x.flatten()) {
-      assert_ne!(x.t, None, "{:?}", x.x);
+      assert_ne!(x.t, None, "{:#?}", x.x);
     }
   }
 
@@ -1079,7 +1106,7 @@ impl Context {
 
         if let Some(t) = &x.t {
           if let Some(ctx) = self.find_assoc(i, t) {
-            return Node::new(Some(ctx.func.ty.clone()), Expr::Callable(Invoke::Ctx(ctx)));
+            return Node::new(Some(ctx.func.ty.clone()), Expr::Callable(Invoke::Assoc(x, ctx)));
           }
         }
 
@@ -1091,28 +1118,21 @@ impl Context {
         let r = self.lowerv(r);
         let g = Ty::agg(&g, self);
         match &l.x {
-          Expr::Callable(Invoke::Ctx(ctx)) => {
+          Expr::Callable(Invoke::Ctx(ctx) | Invoke::Assoc(_, ctx)) => {
             if ctx.func.gen == g.len() {
               //let arg_tys = Ty::agg_subst(ctx.func.get_args(), &g);
               //println!("{} {} {}", ctx.name, ctx.func.gen, g.len());
               let ret = ctx.func.get_ret().subst(&g);
               let g = g.into_iter().map(|t| Some(t.clone())).collect();
-              return Node::new(Some(ret), Expr::Call(l, g, r));
+              Node::new(Some(ret), Expr::Call(l, g, r))
             }
             //DEDUCE
             else {
               if g.len() > 0 { panic!("Partial type variable not allowed") };
-
-              let (ret, g) = ctx.func.deduce_ret_from(&r);
-              if let Some(ret) = ret {
-                return Node::new(Some(ret), Expr::Call(l, g, r));
-              } else {
-                return Node::new(None, Expr::Call(l, g, r));
-              }
-              panic!();
+              let (ret, g) = ctx.func.deduce_ret_from(&r, if let Expr::Callable(Invoke::Assoc(f, _)) = &l.x {Some(f.clone())} else {None});
+              Node::new(ret, Expr::Call(l, g, r))
             }
           }
-
           Expr::Field(obj, method) => {
             if let Some(t) = &obj.t {
               let f = Func {
@@ -1125,7 +1145,8 @@ impl Context {
                 //ty: Ty::Void,
                 va: None,
               };
-              ptr(l.as_ref()).x = Expr::Callable(Invoke::Method(obj.clone(), f));
+              ptr(l.as_ref()).t = Some(f.ty.clone());
+              ptr(l.as_ref()).x = Expr::Callable(Invoke::ConstraintMethod(obj.clone(), f));
               let g = g.into_iter().map(|t| Some(t.clone())).collect();
               Node::new(None, Expr::Call(l, g, r))
             } else {
@@ -1153,12 +1174,8 @@ impl Context {
                 //Needs deducing
                 else {
                   if g.len() > 0 { panic!("Partial type variable not allowed") };
-                  let (ret, g) = c.func.deduce_ret_from(&r);
-                  if let Some(ret) = ret {
-                    return Node::new(Some(ret), Expr::Call(f, g, r));
-                  } else {
-                    return Node::new(None, Expr::Call(f, g, r));
-                  }
+                  let (ret, g) = c.func.deduce_ret_from(&r, None);
+                  return Node::new(ret, Expr::Call(f, g, r));
                 }
               }
               Expr::Extern => Rc::new([]),
@@ -1342,16 +1359,6 @@ impl Context {
   }
 }
 
-fn solve_agg_for(agg: &[Ty], input: &[Rc<Node>], g:usize) -> Vec<Option<Ty>> {
-  assert_eq!(input.len(), agg.len());
-  let tys = input.iter().map(|n| &n.t).collect::<Vec<_>>();
-  let mut re: Vec<Option<Ty>> = vec![None; g];
-  agg.iter()
-    .zip(tys.iter())
-    .for_each(|(t0, t1)| t0.gather_opt(t1, &mut re));
-  re
-}
-
 impl Adt {
   fn get_mem_ty(&self, n: Sstr) -> Option<Ty> {
     self.names
@@ -1430,8 +1437,11 @@ impl Func {
     solve_agg_for(self.get_args(), params, self.gen)
   }
 
-  fn deduce_ret_from(&self, params: &[Rc<Node>]) -> (Option<Ty>, Vec<Option<Ty>>) {
-    let g = self.solve_type_vars_for_params(params);
+  fn deduce_ret_from(&self, params: &[Rc<Node>], this: Option<Rc<Node>>) -> (Option<Ty>, Vec<Option<Ty>>) {
+    let mut g = self.solve_type_vars_for_params(params);
+    if let (Some(this)) = this {
+      self.this.as_ref().unwrap().gather(this.t.as_ref().unwrap(), &mut g);
+    }
     let known = g.iter().enumerate().fold(0, |n, (i, t)| {
       n | t.is_some().then(|| 1 << i).unwrap_or_default()
     });
@@ -1574,7 +1584,7 @@ impl Iterator for BitIterator {
 
 impl Ty {
   pub fn as_str(&self) -> String {
-    let us = |u:&bool| u.then(||"byte").unwrap_or("");
+    let us = |u:&bool| u.then(||"").unwrap_or("u");
     match self {
       Ty::Void => format!("[]"),
       Ty::Prim(s) => match s {
