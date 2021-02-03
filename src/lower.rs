@@ -392,6 +392,7 @@ impl VarStack {
       self.above.as_ref().map(|s| s.get(n)).unwrap_or(None)
     }
   }
+  
   pub fn insert(&mut self, n: Sstr, x: Rc<Node>) {
     self.data.entry(n).or_default().push(x);
   }
@@ -707,6 +708,10 @@ impl Context {
     }
   }
 
+  fn find_var(&self, n: Sstr) -> Option<Rc<Node>> {
+    self.locals.get(n).or(self.find_arg(n))
+  }
+  
   fn find_symbol(&self, n: Sstr) -> Option<Rc<Node>> {
     //println!("Looking for {} {:?} {:?}", n, self.extsymbols, self.above);
     self.find_arg(n)
@@ -726,9 +731,6 @@ impl Context {
     None
   }
 
-  fn find_var(&self, n: Sstr) -> Option<Rc<Node>> {
-    self.locals.get(n).or(self.find_arg(n))
-  }
 
   pub fn lower(&mut self, x: &ast::Expr) -> Rc<Node> {
     match x {
@@ -764,7 +766,7 @@ impl Context {
           | Binop::Ge
           | Binop::Gt
           | Binop::Eq
-          | Binop::Neq
+          | Binop::Ne
           | Binop::And => {
             Node::new((Ty::Prim(Prim::Bool)), Expr::Binary(*op, l.clone(), r))
           }
@@ -1170,7 +1172,7 @@ impl Node {
         | Binop::Ge
         | Binop::Gt
         | Binop::Eq
-        | Binop::Neq
+        | Binop::Ne
         | Binop::And => assert_eq!(t, &Ty::Prim(Prim::Bool)),
         _ => {
           l.unify_ty(t);

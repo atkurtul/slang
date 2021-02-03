@@ -26,7 +26,15 @@ ops: Binop = {
  ">>"  => Binop::Shr,
  "<<"  => Binop::Shl,
  "=="  => Binop::Eq,
- "!="  => Binop::Neq,
+ "!="  => Binop::Ne,
+
+ "ge"  => Binop::Ge,
+ "le"  => Binop::Le,
+ "shr" => Binop::Shr,
+ "shl" => Binop::Shl,
+ "eq"  => Binop::Eq,
+ "is"  => Binop::Eq,
+ "ne"  => Binop::Ne,
  "and" => Binop::Logand,
  "or"  => Binop::Logor,
 }
@@ -38,7 +46,7 @@ assignops: Binop = {
  "-="  => Binop::Sub,
  "<<=" => Binop::Shl,
  ">>=" => Binop::Shr,
- "&="  => Binop::Add,
+ "&="  => Binop::And,
  "|="  => Binop::Or,
  "^="  => Binop::Xor,
 }

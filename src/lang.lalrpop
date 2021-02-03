@@ -8,7 +8,6 @@ grammar(table: &mut SymbolTable);
 #[inline] GenericR = "]";
 #[inline] TupleL = "{";
 #[inline] TupleR = "}";
-
 #[inline] BlockL = "{";
 #[inline] BlockR = "}";
 
@@ -281,8 +280,8 @@ Shlr : Binop = {
 
 //#[inline]
 Cmpop : Binop = {
-  "<" => Binop::Lt,
-  ">" => Binop::Gt,
+  "<" =>  Binop::Lt,
+  ">" =>  Binop::Gt,
   "<=" => Binop::Le,
   ">=" => Binop::Ge,
 }
@@ -290,7 +289,7 @@ Cmpop : Binop = {
 //#[inline]
 Eqop : Binop = {
   "==" => Binop::Eq,
-  "!=" => Binop::Neq,
+  "!=" => Binop::Ne,
 }
 
 Andop: Binop = "&" => Binop::And;
@@ -378,7 +377,7 @@ extern {
     ">>" => Tok::Ops(Binop::Shr),
     "<<" => Tok::Ops(Binop::Shl),
     "==" => Tok::Ops(Binop::Eq),
-    "!=" => Tok::Ops(Binop::Neq),
+    "!=" => Tok::Ops(Binop::Ne),
     "or" => Tok::Ops(Binop::Logor),
     "and" => Tok::Ops(Binop::Logand),
     AssignOp => Tok::Assignops(<Binop>),

@@ -72,18 +72,24 @@ pub enum Binop {
   Rem,
   Shl,
   Shr,
+  And,
+  Or,
+  Xor,
+  Assign,
   Lt,
   Le,
   Ge,
   Gt,
   Eq,
-  Neq,
-  And,
-  Or,
-  Xor,
+  Ne,
   Logor,
   Logand,
-  Assign,
+}
+
+impl Binop {
+  pub fn is_boolean(self) -> bool {
+    self as usize > Self::Assign as usize
+  }
 }
 
 pub fn lex_file(src: &str) -> Result<Vec<(Loc, Tok, Loc)>, (Loc, Loc)> {

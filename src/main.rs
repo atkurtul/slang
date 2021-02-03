@@ -4,6 +4,7 @@ pub mod ast;
 pub mod lexer;
 pub mod llvm;
 pub mod lower;
+pub mod lower2;
 pub mod reduce;
 
 pub mod memory;
@@ -18,11 +19,17 @@ pub type Sstr = &'static str;
 fn main() {
   let allocator = Bump::new();
 
-  let (src, file) = ast::parse_file("tests/test3.sl");
-  let top = lower::Context::new(file);
+  let (src, file) = ast::parse_file("tests/test1.sl");
+  let top = lower2::Context::new(file);
   //println!("{:#?}", top);
-  for (k, v) in top.below {
-    println!("{:#?}", v.nodes);
+  for (k, v) in top.inner.below {
+    // println!("{:#?}", v.nodes);
+    let v: Vec<_> = v.nodes.iter().flat_map(|x| x.flatten()).collect();
+    for x in v {
+      if x.t == None {
+        println!("{:?}", x.x.name());
+      }
+    }
   }
   // for (k, v) in top.assocs {
   //   for f in v {
@@ -35,7 +42,7 @@ fn main() {
 mod tests {
   fn parse_quick(src: &str) {
     let (src, file) = crate::ast::parse_file(src);
-    let top = crate::lower::Context::new(file);
+    let top = crate::lower2::Context::new(file);
   }
   #[test]fn vk() {parse_quick("tests/vk.sl");}
   #[test]fn tree() {parse_quick("tests/tree.sl");}
