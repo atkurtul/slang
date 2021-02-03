@@ -1,0 +1,181 @@
+   Compiling slang v0.1.0 (/home/atil/repos/slang2)
+    Finished dev [unoptimized + debuginfo] target(s) in 1.79s
+     Running `target/debug/slang`
+thread 'main' panicked at '[
+    {
+        "re": [
+            Node {
+                t: Some(
+                    Ptr(
+                        Gen(
+                            0,
+                        ),
+                    ),
+                ),
+                x: Cast(
+                    Ptr(
+                        Gen(
+                            0,
+                        ),
+                    ),
+                    Node {
+                        t: Some(
+                            Ptr(
+                                Void,
+                            ),
+                        ),
+                        x: Call(
+                            Node {
+                                t: Some(
+                                    Func(
+                                        [
+                                            Prim(
+                                                Long(
+                                                    false,
+                                                ),
+                                            ),
+                                        ],
+                                        Ptr(
+                                            Void,
+                                        ),
+                                        false,
+                                    ),
+                                ),
+                                x: Extern,
+                            },
+                            [],
+                            [
+                                Node {
+                                    t: Some(
+                                        Prim(
+                                            Long(
+                                                false,
+                                            ),
+                                        ),
+                                    ),
+                                    x: Binary(
+                                        Mul,
+                                        Node {
+                                            t: Some(
+                                                Prim(
+                                                    Long(
+                                                        false,
+                                                    ),
+                                                ),
+                                            ),
+                                            x: Field(
+                                                Node {
+                                                    t: Some(
+                                                        Ptr(
+                                                            Gadt(
+                                                                list,
+                                                                [
+                                                                    Gen(
+                                                                        0,
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                        ),
+                                                    ),
+                                                    x: This,
+                                                },
+                                                "len",
+                                            ),
+                                        },
+                                        Node {
+                                            t: Some(
+                                                Prim(
+                                                    Long(
+                                                        false,
+                                                    ),
+                                                ),
+                                            ),
+                                            x: Call(
+                                                Node {
+                                                    t: Some(
+                                                        Func(
+                                                            [],
+                                                            Prim(
+                                                                Long(
+                                                                    false,
+                                                                ),
+                                                            ),
+                                                            false,
+                                                        ),
+                                                    ),
+                                                    x: Ctx(
+                                                        sizeof,
+                                                    ),
+                                                },
+                                                [
+                                                    None,
+                                                ],
+                                                [],
+                                            ),
+                                        },
+                                    ),
+                                },
+                            ],
+                        ),
+                    },
+                ),
+            },
+        ],
+    },
+    {
+        "i": [
+            Node {
+                t: None,
+                x: Iter(
+                    Node {
+                        t: None,
+                        x: Range(
+                            Node {
+                                t: Some(
+                                    Prim(
+                                        Int(
+                                            true,
+                                        ),
+                                    ),
+                                ),
+                                x: Literal(
+                                    Int(
+                                        0,
+                                    ),
+                                ),
+                            },
+                            Node {
+                                t: Some(
+                                    Prim(
+                                        Long(
+                                            false,
+                                        ),
+                                    ),
+                                ),
+                                x: Field(
+                                    Node {
+                                        t: Some(
+                                            Ptr(
+                                                Gadt(
+                                                    list,
+                                                    [
+                                                        Gen(
+                                                            0,
+                                                        ),
+                                                    ],
+                                                ),
+                                            ),
+                                        ),
+                                        x: This,
+                                    },
+                                    "len",
+                                ),
+                            },
+                        ),
+                    },
+                ),
+            },
+        ],
+    },
+]', src/lower2.rs:861:37
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

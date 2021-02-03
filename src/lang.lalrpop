@@ -214,11 +214,13 @@ Leaf: Expr = {
   "$" => Expr::Counter,
 }
 
+#[inline]
+MbyGenerics: Vec<Ty> = <(GenericL <seq1<Ty>> GenericR)?>  => <>.unwrap_or_default();
 //#[inline]
 Postfix: Expr = {
   Leaf,
-  <P<Postfix>> <(GenericL <seq1<Ty>> GenericR)?> "(" <seq0<Expr>> ")" => Expr::Call(<>),
-  <Identp> <(GenericL <seq1<Ty>> GenericR)?> "(" <seq0<Expr>> ")" => Expr::FreeCall(<>),
+  <P<Postfix>> <MbyGenerics> "(" <seq0<Expr>> ")" => Expr::Call(<>),
+  <Identp> <MbyGenerics> "(" <seq0<Expr>> ")" => Expr::FreeCall(<>),
   <P<Postfix>> "." "[" <P<Expr>> "]" => Expr::Subscript(<>),
   <P<Postfix>> "." <Ident>  => Expr::Member(<>),
   <P<Postfix>> "." <Usize>  => Expr::TupleIndex(<>),

@@ -86,8 +86,8 @@ pub enum Expr {
     TupleIndex(Box<Expr>, usize),
     Member(Box<Expr>, Sstr),
     Range(Box<Expr>, Box<Expr>),
-    Call(Box<Expr>, Option<Vec<Ty>>, Vec<Expr>),
-    FreeCall(Sstr, Option<Vec<Ty>>, Vec<Expr>),
+    Call(Box<Expr>, Vec<Ty>, Vec<Expr>),
+    FreeCall(Sstr, Vec<Ty>, Vec<Expr>),
     Aggregate(Aggregate),
 
     Lambda(Vec<(Sstr, Option<Ty>)>, Box<Expr>),
