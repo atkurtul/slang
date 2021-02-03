@@ -7,7 +7,7 @@ type Vec[T] {
 
 fn vec_new[T] -> Vec[T] {
   ret Vec {
-    pp  = nil,
+    pp  =  nil,
     len = :long 0,
     cap = :long 0,
   };
@@ -18,6 +18,6 @@ fn push[T](v *Vec[T], ele T) {
 }
 
 fn main {
-  let v = vec_new();
+  v := vec_new();
   push(&v, 0);
 }

@@ -1,9 +1,9 @@
 
 fn main {
-	let count = 0;
+	count := 0;
 	vkEnumerateInstanceExtensionProperties(nil, &count, nil);
 	printf("Count %d %lu\n", count, sizeof[ExtensionProperties]());
-	let props = alloc[ExtensionProperties](:long count);
+	props := alloc[ExtensionProperties](:long count);
 	printf("Malloc fine %lu\n", :long count * sizeof[ExtensionProperties]());
 	vkEnumerateInstanceExtensionProperties(nil, &count, props);
 }

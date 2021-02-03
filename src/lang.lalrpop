@@ -79,7 +79,7 @@ Statements: Expr = {
   <Expr> ";",
   "ret" <P<Expr>?> ";" => Expr::Ret(<>),
   "brk" <Ident?> ";" => Expr::Brk(<>),
-  "let" <PushBinding> <Ty?> "=" <P<Expr>> ";" => Expr::Let(<>),
+  <PushBinding> ":"  <Ty?> "=" <P<Expr>> ";" => Expr::Let(<>),
   "if" <P<Expr>> <P<Block>> "else" <P<Block>> => Expr::IfElse(<>),
   "if" <P<Expr>> <P<Block>> => Expr::If(<>),
   "while" <P<Expr>> <P<Block>> => Expr::While(<>),
@@ -210,8 +210,8 @@ Leaf: Expr = {
   "(" <Expr> ")",
   "self" => Expr::This,
   "nil" => Expr::Nil,
-  "@" => Expr::Accumulator,
-  "$" => Expr::Counter,
+  // "@" => Expr::Accumulator,
+  // "$" => Expr::Counter,
 }
 
 #[inline]

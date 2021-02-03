@@ -21,6 +21,25 @@ pub struct Node {
   pub x: Expr,
 }
 
+fn solve_agg(s: &Rc<Adt>, g: &Rc<[Option<Ty>]>,  x: &Vec<Rc<Node>>) {
+  let g:Vec<_> = g.iter().flat_map(|x|x.clone()).collect();
+  if s.gen == g.len() {
+    for (x, t) in x.iter().zip(Ty::agg_subst(&s.tys, &g).iter()) {
+      x.enforce(t);
+    }
+  } else {
+    let sol = s.solve_type_vars_for_members(x);
+    let known = sol.iter().fold(0, |v, t| v | t.as_ref().map(|t| t.deps()).unwrap_or_default());
+    let sol: Vec<_> = sol.into_iter().map(|t| t.unwrap_or(Ty::Gen(usize::MAX))).collect();
+    for (t, arg) in s.tys.iter().zip(x.iter()) {
+      let deps = t.deps();
+      if (deps | known) <= known {
+        arg.enforce(&t.subst(&sol));
+      }
+    }
+  }
+}
+
 impl Node {
   fn mby_enforce(&self, r: &Node) {
     match (&self.t, &r.t) {
@@ -113,13 +132,13 @@ impl Node {
       | Skip | This | Nil | Arg | Va | Accumulator | Counter => (),
 
       Expr::Agg(a) => {
-        //TODO
         match a {
           Aggregate::Struct(s, g, _, x) => {
             //TODO
             x.iter().for_each(|x| x.refresh());
+            solve_agg(s,g,x);
           }
-          Aggregate::Tuple(v) => v.iter().for_each(|x| x.refresh()),
+          Aggregate::Tuple(v) |
           Aggregate::Array(v) => v.iter().for_each(|x| x.refresh()),
         }
       }
@@ -238,6 +257,21 @@ impl Node {
 
       Expr::Iter(n) => {
         //TODO
+      }
+
+      Expr::Agg(Aggregate::Struct(s, g, _, x)) => {
+        if let Ty::Gadt(s, gg) = &t {
+          for (x, y) in g.iter().zip(gg.iter()) {
+            if let Some(x) = x {
+              assert_eq!(x, y);
+            } else {
+              x.as_ref().map(|x| *ptr(x) = y.clone());
+            }
+          }
+          for (x, t) in x.iter().zip(Ty::agg_subst(&s.tys, gg).iter()) {
+            x.enforce(t);
+          }
+        }
       }
 
       Expr::Agg(..) => {
@@ -362,7 +396,7 @@ pub struct Adt {
   gen: usize,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum Ty {
   Void,
   Prim(Prim),
@@ -710,11 +744,21 @@ impl Context {
     ctx.locals.push(defo());
     ctx.collect(&x);
     ctx.nodes = ctx.lowerv(&x);
-    ctx.nodes.iter().for_each(|x| x.refresh());
-    for x in ctx.nodes.iter().flat_map(|x| x.flatten()) {
-      assert_ne!(x.t, None);
-    }
+    ctx.assert_sane();
     ctx
+  }
+
+  fn assert_sane(&self) {
+    self.nodes.iter().for_each(|x| x.refresh());
+    for (_,ctx) in self.below.iter() {
+      ctx.assert_sane();
+    }
+    for (_,v) in self.assocs.iter() {
+      v.iter().for_each(|ctx| ctx.assert_sane());
+    }
+    for x in self.nodes.iter().flat_map(|x| x.flatten()) {
+      assert_ne!(x.t, None, "{:?}", x.x);
+    }
   }
 
   fn branch(&self, data: ContextData) -> Context {
@@ -1191,6 +1235,7 @@ impl Context {
       ast::Expr::Ret(x) => {
         let x = x.as_ref().map(|x| {
           let re = self.lower(&x);
+          println!("Enforcing ret {:?} on {:?}", self.func.get_ret(), re.x.name());
           re.enforce(self.func.get_ret());
           re
         });
@@ -1293,6 +1338,16 @@ impl Context {
   }
 }
 
+fn solve_agg_for(agg: &[Ty], input: &[Rc<Node>], g:usize) -> Vec<Option<Ty>> {
+  assert_eq!(input.len(), agg.len());
+  let tys = input.iter().map(|n| &n.t).collect::<Vec<_>>();
+  let mut re: Vec<Option<Ty>> = vec![None; g];
+  agg.iter()
+    .zip(tys.iter())
+    .for_each(|(t0, t1)| t0.gather_opt(t1, &mut re));
+  re
+}
+
 impl Adt {
   fn get_mem_ty(&self, n: Sstr) -> Option<Ty> {
     self.names
@@ -1300,6 +1355,10 @@ impl Adt {
       .enumerate()
       .find(|(i, s)| **s == n)
       .map(|(i, _)| self.tys[i].clone())
+  }
+
+  fn solve_type_vars_for_members(&self, mem: &[Rc<Node>]) -> Vec<Option<Ty>> {
+    solve_agg_for(&self.tys, mem, self.gen)
   }
 }
 
@@ -1364,14 +1423,7 @@ impl Func {
   }
 
   fn solve_type_vars_for_params(&self, params: &[Rc<Node>]) -> Vec<Option<Ty>> {
-    let args = self.get_args();
-    assert_eq!(params.len(), args.len());
-    let tys = params.iter().map(|n| &n.t).collect::<Vec<_>>();
-    let mut re: Vec<Option<Ty>> = vec![None; self.gen];
-    args.iter()
-      .zip(tys.iter())
-      .for_each(|(t0, t1)| t0.gather_opt(t1, &mut re));
-    re
+    solve_agg_for(self.get_args(), params, self.gen)
   }
 
   fn deduce_ret_from(&self, params: &[Rc<Node>]) -> (Option<Ty>, Vec<Option<Ty>>) {
@@ -1513,5 +1565,43 @@ impl Iterator for BitIterator {
     } else {
       None
     }
+  }
+}
+
+impl Ty {
+  pub fn as_str(&self) -> String {
+    let us = |u:&bool| u.then(||"byte").unwrap_or("");
+    match self {
+      Ty::Void => format!("[]"),
+      Ty::Prim(s) => match s {
+        Prim::Bool => format!("bool"),
+        Prim::Byte(u) => format!("{}byte", us(u)),
+        Prim::Short(u) => format!("{}short", us(u)),
+        Prim::Int(u) => format!("{}int", us(u)),
+        Prim::Long(u) => format!("{}long", us(u)),
+        Prim::Word => format!("word"),
+        Prim::Real => format!("real"),
+        Prim::Double => format!("double"),
+        Prim::Str => format!("str"),
+        Prim::Vector(..) => format!("vec"),
+      }
+      Ty::Tuple(t) => format!("[{}]", t.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(",")),
+      Ty::Union(t) => format!("[{}]", t.iter().map(|t| t.as_str()).collect::<Vec<_>>().join("|")),
+      Ty::Slice(t) => format!("[{}]", t.as_str()),
+      Ty::Ptr(t) => format!("*{}", t.as_str()),
+      Ty::Array(l, t) => format!("{}{}", l,t.as_str()),
+      Ty::Func(v, r, _) => format!("({}) -> {}", v.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(","), r.as_str()),
+      Ty::Adt(t) => format!("{}", t.name),
+      Ty::Gadt(t, g) => format!("{}[{}]", t.name, g.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(",")),
+      Ty::Gen(i) => format!("T{}", i),
+    }
+  }
+}
+
+
+impl std::fmt::Debug for Ty {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.as_str());
+    Ok(())
   }
 }

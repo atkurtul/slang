@@ -16,7 +16,6 @@ pub enum Tok {
   Str(Sstr),
   Ident(Sstr),
   Var(Sstr, usize),
-  //Fold(Sstr, usize),
   Ops(Binop),
   Assignops(Binop),
   Prim(Prim),
