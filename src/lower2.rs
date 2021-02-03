@@ -125,7 +125,6 @@ impl Node {
       }
 
       Expr::Call(f, g, a) => {
-        //TODO
         f.refresh();
         a.iter().for_each(|x| x.refresh());
 
@@ -147,8 +146,16 @@ impl Node {
         };
 
         assert_eq!(f.gen, g.len());
+        let sol = f.solve_type_vars_for_params_and_mby_ret(a, &self.t);
+        let known = sol.iter().fold(0, |v, t| v | t.as_ref().map(|t| t.deps()).unwrap_or_default());
+        let sol: Vec<_> = sol.into_iter().map(|t| t.unwrap_or(Ty::Gen(usize::MAX))).collect();
+        for (t, arg) in f.get_args().iter().zip(a.iter()) {
+          let deps = t.deps();
+          if (deps | known) <= known {
+            arg.enforce(&t.subst(&sol));
+          }
+        }
 
-        let sol = f.solve_type_vars_for_params(a);
         if let (Some(ret), g) = f.deduce_ret_from(a) {
           self.enforce(&ret);
         }
@@ -1037,14 +1044,23 @@ impl Context {
         match &l.x {
           Expr::Callable(Invoke::Ctx(ctx)) => {
             if ctx.func.gen == g.len() {
-              let g = Ty::agg_subst(ctx.func.get_args(), &g);
+              //let arg_tys = Ty::agg_subst(ctx.func.get_args(), &g);
+              //println!("{} {} {}", ctx.name, ctx.func.gen, g.len());
               let ret = ctx.func.get_ret().subst(&g);
               let g = g.into_iter().map(|t| Some(t.clone())).collect();
               return Node::new(Some(ret), Expr::Call(l, g, r));
             }
             //DEDUCE
             else {
-              panic!()
+              if g.len() > 0 { panic!("Partial type variable not allowed") };
+
+              let (ret, g) = ctx.func.deduce_ret_from(&r);
+              if let Some(ret) = ret {
+                return Node::new(Some(ret), Expr::Call(l, g, r));
+              } else {
+                return Node::new(None, Expr::Call(l, g, r));
+              }
+              panic!();
             }
           }
 
@@ -1087,6 +1103,7 @@ impl Context {
                 }
                 //Needs deducing
                 else {
+                  if g.len() > 0 { panic!("Partial type variable not allowed") };
                   let (ret, g) = c.func.deduce_ret_from(&r);
                   if let Some(ret) = ret {
                     return Node::new(Some(ret), Expr::Call(f, g, r));
@@ -1337,6 +1354,12 @@ impl Func {
   fn solve_type_vars_for_params_and_ret(&self, params: &[Rc<Node>], ret: &Ty) -> Vec<Option<Ty>> {
     let mut re = self.solve_type_vars_for_params(params);
     self.get_ret().gather(ret, &mut re);
+    re
+  }
+
+  fn solve_type_vars_for_params_and_mby_ret(&self, params: &[Rc<Node>], ret: &Option<Ty>) -> Vec<Option<Ty>> {
+    let mut re = self.solve_type_vars_for_params(params);
+    ret.as_ref().map(|ret| self.get_ret().gather(ret, &mut re));
     re
   }
 

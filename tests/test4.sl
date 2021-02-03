@@ -28,6 +28,6 @@ fn clone[T](self *list[T]) -> list[T] {
 
 fn push[T](self *list[T], e T) {
   if self.len >= self.cap {
-    self.clone();
+    let v = self.clone();
   }
 }
