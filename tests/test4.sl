@@ -14,20 +14,20 @@ type list[T] {
   cap ulong
 }
 
-# fn clone[T](self *list[T]) -> list[T] {
-#   re := :*T malloc(self.len * sizeof[T]());
-#   for i in 0..self.len {
-#     re.[i] = self.pp.[i].clone();
-#   }
-#   ret list {
-#     pp = re,
-#     len = self.len,
-#     cap = self.len
-#   };
-# }
+fn clone[T](self *list[T]) -> list[T] {
+  re := :*T malloc(self.len * sizeof[T]());
+  for i in 0..self.len {
+    re.[i] = self.pp.[i].clone();
+  }
+  ret list {
+    pp = re,
+    len = self.len,
+    cap = self.len
+  };
+}
 
-# fn push[T](self *list[T], e T) {
-#   if self.len >= self.cap {
-#     v := self.clone();
-#   }
-# }
+fn push[T](self *list[T], e T) {
+  if self.len >= self.cap {
+    v := self.clone();
+  }
+}

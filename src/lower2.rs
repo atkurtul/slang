@@ -59,7 +59,9 @@ impl Node {
 
       Expr::Iter(l) => {
         l.refresh();
-        if let Some(t) = &l.t {}
+        if let Some(t) = &l.t {
+          self.enforce(&t.indexable_type().unwrap());
+        }
       }
 
       Expr::AssignOp(_, l, r) | Expr::Assign(l, r) | Expr::Range(l, r) => {
@@ -228,7 +230,14 @@ impl Node {
         _ => l.enforce(t),
       },
 
-      Expr::Range(l, r) => l.mby_enforce(r),
+      Expr::Range(l, r) => {
+        l.mby_enforce(r);
+        l.t.as_ref().map(|t| self.enforce(&Ty::Slice(Rc::new(t.clone()))));
+      }
+
+      Expr::Iter(n) => {
+        //TODO
+      }
 
       Expr::Lambda(_, a, r) => match t {
         Ty::Func(a1, r1, _) => {
@@ -254,10 +263,6 @@ impl Node {
       Literal(..) | Cast(..) | Callable(..) | Ret(..) | Brk(..) | If(..) | While(..)
       | Forever(..) | Jmp(..) | For(..) | Let(..) | Type | Extern | Label | Skip | This
       | Nil | Arg | Va | Accumulator | Counter => (),
-
-      Expr::Iter(n) => {
-        //TODO
-      }
 
       Expr::Agg(Aggregate::Struct(s, g, _, x)) => {
         if let Ty::Gadt(s, gg) = &t {
@@ -1235,7 +1240,6 @@ impl Context {
       ast::Expr::Ret(x) => {
         let x = x.as_ref().map(|x| {
           let re = self.lower(&x);
-          println!("Enforcing ret {:?} on {:?}", self.func.get_ret(), re.x.name());
           re.enforce(self.func.get_ret());
           re
         });
