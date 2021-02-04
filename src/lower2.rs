@@ -133,10 +133,13 @@ impl Node {
       }
 
       Expr::Lambda(args, body) => {
+
+        println!("Refreshing lambda");
         args.iter().for_each(|a| a.refresh());
         body.refresh();
 
         if let Some(t) = &self.t {
+          println!("1");
           if let Ty::Func(a, r, _) = &t {
             for (x, t) in args.iter().zip(a.iter()) {
               x.enforce(t);
@@ -146,6 +149,7 @@ impl Node {
           }
         }
         else if let Some(re) = &body.t {
+          println!("Body type known");
           let tys: Rc<[_]> = args.iter().filter_map(|x| x.t.clone()).collect();
           if tys.len() == args.len() {
             self.enforce(&Ty::Func(tys, Rc::new(re.clone()), false));
@@ -188,6 +192,8 @@ impl Node {
       }
 
       Expr::Call(f, g, a) => {
+
+        println!("Refreshing call");
         f.refresh();
         a.iter().for_each(|x| x.refresh());
 
@@ -263,7 +269,7 @@ impl Node {
     if let Some(ty) = &self.t {
       assert_eq!(ty, t, "{:?}", self.x);
     } else {
-      println!("{:?} enforced {:?}", self.x.name(), t);
+      //println!("{:?} enforced {:?}", self.x.name(), t);
       ptr(self).t = Some(t.clone());
     }
 
@@ -844,7 +850,7 @@ impl Context {
     }
     for x in self.nodes.iter().flat_map(|x| x.flatten()) {
       //assert_ne!(x.t, None, "{:#?}", x.x);
-      if x.t == None { println!("{:?}", x.x.name()); }
+      //if x.t == None { println!("{:?}", x.x.name()); }
     }
   }
 
