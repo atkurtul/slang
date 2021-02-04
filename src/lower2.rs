@@ -132,11 +132,20 @@ impl Node {
         r.refresh();
       }
 
-      Expr::Lambda(args, _, tt, body) => {
+      Expr::Lambda(args, body) => {
         args.iter().for_each(|a| a.refresh());
         body.refresh();
 
-        if let Some(re) = &body.t {
+        if let Some(t) = &self.t {
+          if let Ty::Func(a, r, _) = &t {
+            for (x, t) in args.iter().zip(a.iter()) {
+              x.enforce(t);
+            }
+          } else {
+            panic!();
+          }
+        }
+        else if let Some(re) = &body.t {
           let tys: Rc<[_]> = args.iter().filter_map(|x| x.t.clone()).collect();
           if tys.len() == args.len() {
             self.enforce(&Ty::Func(tys, Rc::new(re.clone()), false));
@@ -200,7 +209,7 @@ impl Node {
             (f, Some(1))
           }
           _ => {
-            if let Some(Ty::Func(_, r, _)) = &f.t {
+            if let Some(Ty::Func(a, r, _)) = &f.t {
               self.enforce(r);
             } else if let Some(t) = &self.t {
               let tt: Rc<[_]> = a.iter().filter_map(|a| a.t.clone()).collect();
@@ -250,12 +259,14 @@ impl Node {
   }
 
   fn enforce(&self, t: &Ty) {
+
     if let Some(ty) = &self.t {
       assert_eq!(ty, t, "{:?}", self.x);
     } else {
-      //println!("Lol wut xd");
+      println!("{:?} enforced {:?}", self.x.name(), t);
       ptr(self).t = Some(t.clone());
     }
+
     use Expr::*;
     match &self.x {
       Expr::Var(_, n) => n.enforce(t),
@@ -287,15 +298,18 @@ impl Node {
         //TODO
       }
 
-      Expr::Lambda(v, _, a, r) => { 
+      Expr::Lambda(v, r) => { 
         match t {  
           Ty::Func(a1, r1, _) => {
-            for (a, b) in a.iter().zip(a1.iter()) {
-              if let Some(t) = &a {
-                assert_eq!(t, b);
-              } else {
-                *ptr(a) = Some(b.clone());
-              }
+            // for (a, b) in a.iter().zip(a1.iter()) {
+            //   if let Some(t) = &a {
+            //     assert_eq!(t, b);
+            //   } else {
+            //     *ptr(a) = Some(b.clone());
+            //   }
+            // }
+            for (t, x) in a1.iter().zip(v.iter()) {
+              x.enforce(t);
             }
             r.enforce(r1);
           }
@@ -355,9 +369,9 @@ impl Node {
           _ => {
             assert_eq!(g.len(), 0);
             if let Some(Ty::Func(t, r, _)) = &f.t {
-              for (a,t) in a.iter().zip(t.iter()) {
-                a.enforce(t);
-              }
+              // for (a,t) in a.iter().zip(t.iter()) {
+              //   a.enforce(t);
+              // }
             } else {
               let tt: Rc<[_]> = a.iter().filter_map(|a| a.t.clone()).collect();
               if tt.len() == a.len() {
@@ -710,7 +724,7 @@ pub enum Expr {
   Range(Rc<Node>, Rc<Node>),
   Block(Vec<Rc<Node>>),
 
-  Lambda(Vec<Rc<Node>>, Box<[Sstr]>, Box<[Option<Ty>]>, Rc<Node>),
+  Lambda(Vec<Rc<Node>>, Rc<Node>),
 
   Agg(Aggregate),
   Call(Rc<Node>, Vec<Option<Ty>>, Vec<Rc<Node>>),
@@ -829,7 +843,8 @@ impl Context {
       v.iter().for_each(|ctx| ctx.assert_sane());
     }
     for x in self.nodes.iter().flat_map(|x| x.flatten()) {
-      assert_ne!(x.t, None, "{:#?}", x.x);
+      //assert_ne!(x.t, None, "{:#?}", x.x);
+      if x.t == None { println!("{:?}", x.x.name()); }
     }
   }
 
@@ -1311,7 +1326,7 @@ impl Context {
 
         Node::new(
           None,
-          Expr::Lambda(args, a.into_boxed_slice(), b.into_boxed_slice(), x),
+          Expr::Lambda(args, x),
         )
       }
 

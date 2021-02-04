@@ -30,7 +30,7 @@ fn main() {
   let top = lower2::Context::new(file);
   //println!("{:#?}", top);
 
-  let f: fn(i32) -> i32 = |x| x + 2;
+  return;
   for (k, v) in top.inner.below.iter() {
     // println!("{:#?}", v.nodes);
     println!("{}", v.name);
