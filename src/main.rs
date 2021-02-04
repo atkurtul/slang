@@ -15,36 +15,41 @@ pub use memory::defo;
 pub type Sstr = &'static str;
 
 
+fn visit(ctx: &lower2::Context) {
+  println!("{:?}", ctx.constraints);
+  for (_, v) in ctx.assocs.iter() {
+    for ctx in v {
+      visit(ctx);
+    }
+  }
+}
+
 fn main() {
   let allocator = Bump::new();
-  let (src, file) = ast::parse_file("tests/test4.sl");
+  let (src, file) = ast::parse_file("tests/highorder.sl");
   let top = lower2::Context::new(file);
   //println!("{:#?}", top);
+
+  let f: fn(i32) -> i32 = |x| x + 2;
   for (k, v) in top.inner.below.iter() {
     // println!("{:#?}", v.nodes);
     println!("{}", v.name);
     let v: Vec<_> = v.nodes.iter().flat_map(|x| x.flatten()).collect();
-
+    
     for x in v {
-      println!("\t{} {}", x.t.as_ref().unwrap().as_str(), x.x.name());
+      println!("\t{} = {}",  x.x.name(), x.t.as_ref().unwrap().as_str());
     }
   }
-  // for (k, v) in top.inner.assocs.iter() {
-  //   // println!("{:#?}", v.nodes);
-  //   println!("{}", k);
-  //   for v in v.iter() {
-  //     let v: Vec<_> = v.nodes.iter().flat_map(|x| x.flatten()).collect();
-  //     for x in v {
-  //       println!("\t{} {}", x.t.as_ref().unwrap().as_str(), x.x.name());
-  //     }
-  //   }
-  // }
-  
-  // for (k, v) in top.assocs {
-  //   for f in v {
-  //     println!("{:#?}", f.nodes);
-  //   }
-  // }
+  for (k, v) in top.inner.assocs.iter() {
+    // println!("{:#?}", v.nodes);
+    println!("{}", k);
+    for v in v.iter() {
+      let v: Vec<_> = v.nodes.iter().flat_map(|x| x.flatten()).collect();
+      for x in v {
+        println!("\t{} = {}",  x.x.name(), x.t.as_ref().unwrap().as_str());
+      }
+    }
+  }
 }
 
 
@@ -57,6 +62,8 @@ mod tests {
   #[test]fn tree() {parse_quick("tests/tree.sl");}
   #[test]fn hello_world() {parse_quick("tests/helloworld.sl");}
 
+  #[test]fn map() {parse_quick("tests/map.sl");}
+  #[test]fn highorder() {parse_quick("tests/highorder.sl");}
   #[test]fn test0() {parse_quick("tests/test0.sl");}
   #[test]fn test1() {parse_quick("tests/test1.sl");}
   #[test]fn test2() {parse_quick("tests/test2.sl");}

@@ -8,9 +8,9 @@ type Node {
 
 
 fn alloc[T] -> *T {
-  # extern malloc (long) -> *[];
-  # fn sizeof[T] -> long { }
-  # ret :*T malloc(sizeof[T]());
+  extern malloc (long) -> *[];
+  fn sizeof[T] -> long { }
+  ret :*T malloc(sizeof[T]());
 }
 
 fn insert(node **Node, val int) {

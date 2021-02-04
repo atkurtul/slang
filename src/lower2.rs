@@ -132,7 +132,19 @@ impl Node {
         r.refresh();
       }
 
-      Expr::Forever(l) | Expr::Let(l) | Expr::Cast(_, l) | Expr::Lambda(.., l) => {
+      Expr::Lambda(args, _, tt, body) => {
+        args.iter().for_each(|a| a.refresh());
+        body.refresh();
+
+        if let Some(re) = &body.t {
+          let tys: Rc<[_]> = args.iter().filter_map(|x| x.t.clone()).collect();
+          if tys.len() == args.len() {
+            self.enforce(&Ty::Func(tys, Rc::new(re.clone()), false));
+          }
+        }
+      },
+
+      Expr::Forever(l) | Expr::Let(l) | Expr::Cast(_, l)  => {
         l.refresh();
       }
 
@@ -187,7 +199,17 @@ impl Node {
             }
             (f, Some(1))
           }
-          _ => unreachable!()
+          _ => {
+            if let Some(Ty::Func(_, r, _)) = &f.t {
+              self.enforce(r);
+            } else if let Some(t) = &self.t {
+              let tt: Rc<[_]> = a.iter().filter_map(|a| a.t.clone()).collect();
+              if tt.len() == a.len() {
+                f.enforce(&Ty::Func(tt, Rc::new(t.clone()), false));
+              }
+            }
+            return;
+          }
         };
 
         assert_eq!(f.gen, g.len());
@@ -265,15 +287,21 @@ impl Node {
         //TODO
       }
 
-      Expr::Lambda(_, a, r) => match t {
-        Ty::Func(a1, r1, _) => {
-          for (a, b) in a.iter().zip(a1.iter()) {
-            assert_eq!(a.as_ref(), Some(b));
+      Expr::Lambda(v, _, a, r) => { 
+        match t {  
+          Ty::Func(a1, r1, _) => {
+            for (a, b) in a.iter().zip(a1.iter()) {
+              if let Some(t) = &a {
+                assert_eq!(t, b);
+              } else {
+                *ptr(a) = Some(b.clone());
+              }
+            }
+            r.enforce(r1);
           }
-          r.enforce(r1);
+          _ => panic!(),
         }
-        _ => panic!(),
-      },
+      }
 
       Expr::IfElse(_, l, r) => {
         l.enforce(t);
@@ -310,7 +338,6 @@ impl Node {
       }
 
       Expr::Call(f, g, a) => {
-
         let f = match &f.x {
           Expr::Callable(Invoke::Ctx(ctx)) => &ctx.func,
           Expr::Extern => return,
@@ -325,7 +352,20 @@ impl Node {
             }
             &f
           }
-          _ => unreachable!()
+          _ => {
+            assert_eq!(g.len(), 0);
+            if let Some(Ty::Func(t, r, _)) = &f.t {
+              for (a,t) in a.iter().zip(t.iter()) {
+                a.enforce(t);
+              }
+            } else {
+              let tt: Rc<[_]> = a.iter().filter_map(|a| a.t.clone()).collect();
+              if tt.len() == a.len() {
+                f.enforce(&Ty::Func(tt, Rc::new(t.clone()), false));
+              }
+            }
+            return;
+          }
         };
 
         *ptr(g) = f.solve_type_vars_for_params_and_ret(a, t);
@@ -670,7 +710,7 @@ pub enum Expr {
   Range(Rc<Node>, Rc<Node>),
   Block(Vec<Rc<Node>>),
 
-  Lambda(Box<[Sstr]>, Box<[Option<Ty>]>, Rc<Node>),
+  Lambda(Vec<Rc<Node>>, Box<[Sstr]>, Box<[Option<Ty>]>, Rc<Node>),
 
   Agg(Aggregate),
   Call(Rc<Node>, Vec<Option<Ty>>, Vec<Rc<Node>>),
@@ -739,7 +779,7 @@ pub struct Func {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Constraint {
-  Method(Sstr, Rc<[Ty]>, Option<Ty>),
+  Method(Sstr, Vec<Ty>, Option<Ty>),
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -753,7 +793,7 @@ pub struct ContextData {
   pub labels: Set<Sstr>,
   pub locals: Vec<Map<Sstr, Vec<Rc<Node>>>>,
   pub func: Func,
-  pub constraints: FxHashMap<Ty, FxHashSet<Constraint>>,
+  pub constraints: Vec<(Ty, Constraint)>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -983,6 +1023,59 @@ impl Context {
     re
   }
 
+  fn scope<R, F: Fn()->R>(&mut self, f: F) -> R {
+    self.locals.push(defo());
+    let r = f();
+    self.locals.pop();
+    r
+  }
+
+  fn call(&mut self, l: Rc<Node>, r: Vec<Rc<Node>>, g: Rc<[Ty]>) -> Rc<Node> {
+    match &l.x {
+      Expr::Callable(Invoke::Ctx(ctx) | Invoke::Assoc(_, ctx)) => {
+        if ctx.func.gen == g.len() {
+          let ret = ctx.func.get_ret().subst(&g);
+          let g = g.into_iter().map(|t| Some(t.clone())).collect();
+          Node::new(Some(ret), Expr::Call(l, g, r))
+        }
+        //DEDUCE
+        else {
+          if g.len() > 0 { panic!("Partial type variable not allowed") };
+          let (ret, g) = ctx.func.deduce_ret_from(&r, if let Expr::Callable(Invoke::Assoc(f, _)) = &l.x {Some(f.clone())} else {None});
+          Node::new(ret, Expr::Call(l, g, r))
+        }
+      }
+      Expr::Field(obj, method) => {
+        if let Some(t) = &obj.t {
+          let f = Func {
+            names: box [],
+            this: Some(t.clone()),
+            gen: g.len(),
+            ty: Ty::Func(
+                r.iter().map(|x| x.t.clone().unwrap()).collect(),
+                Rc::new(Ty::Void), false),
+            //ty: Ty::Void,
+            va: None,
+          };
+          self.constraints.push((obj.t.clone().unwrap(), Constraint::Method(method, f.get_args().to_owned(), None)));
+          ptr(l.as_ref()).t = Some(f.ty.clone());
+          ptr(l.as_ref()).x = Expr::Callable(Invoke::ConstraintMethod(obj.clone(), f));
+          let g = g.into_iter().map(|t| Some(t.clone())).collect();
+          Node::new(None, Expr::Call(l, g, r))
+        } else {
+          panic!("{:?}", obj.t);
+        }
+      }
+
+
+      what => {
+        assert_eq!(g.len(), 0);
+        let t = if let Some(Ty::Func(_,r,_)) = &l.t { Some((**r).clone())} else { None};
+        Node::new(t, Expr::Call(l, vec![], r))
+      }
+    }
+  }
+
   fn lower(&mut self, x: &ast::Expr) -> Rc<Node> {
     match x {
       ast::Expr::This => {
@@ -1117,45 +1210,7 @@ impl Context {
         let l = self.lower(l);
         let r = self.lowerv(r);
         let g = Ty::agg(&g, self);
-        match &l.x {
-          Expr::Callable(Invoke::Ctx(ctx) | Invoke::Assoc(_, ctx)) => {
-            if ctx.func.gen == g.len() {
-              //let arg_tys = Ty::agg_subst(ctx.func.get_args(), &g);
-              //println!("{} {} {}", ctx.name, ctx.func.gen, g.len());
-              let ret = ctx.func.get_ret().subst(&g);
-              let g = g.into_iter().map(|t| Some(t.clone())).collect();
-              Node::new(Some(ret), Expr::Call(l, g, r))
-            }
-            //DEDUCE
-            else {
-              if g.len() > 0 { panic!("Partial type variable not allowed") };
-              let (ret, g) = ctx.func.deduce_ret_from(&r, if let Expr::Callable(Invoke::Assoc(f, _)) = &l.x {Some(f.clone())} else {None});
-              Node::new(ret, Expr::Call(l, g, r))
-            }
-          }
-          Expr::Field(obj, method) => {
-            if let Some(t) = &obj.t {
-              let f = Func {
-                names: box [],
-                this: Some(t.clone()),
-                gen: g.len(),
-                ty: Ty::Func(
-                    r.iter().map(|x| x.t.clone().unwrap()).collect(),
-                    Rc::new(Ty::Void), false),
-                //ty: Ty::Void,
-                va: None,
-              };
-              ptr(l.as_ref()).t = Some(f.ty.clone());
-              ptr(l.as_ref()).x = Expr::Callable(Invoke::ConstraintMethod(obj.clone(), f));
-              let g = g.into_iter().map(|t| Some(t.clone())).collect();
-              Node::new(None, Expr::Call(l, g, r))
-            } else {
-              panic!("{:?}", obj.t);
-            }
-
-          }
-          _ => panic!(),
-        }
+        self.call(l,r,g)
       }
 
       ast::Expr::FreeCall(l, g, r) => {
@@ -1238,19 +1293,32 @@ impl Context {
       },
 
       ast::Expr::Lambda(a, x) => {
-        let x = self.lower(x);
-        let (a, b): (Vec<_>, Vec<_>) = a
+
+        let (a, b): (Vec<Sstr>, Vec<_>) = a
           .iter()
           .map(|(s, t)| (s, t.as_ref().map(|t| Ty::new(&t, self))))
           .unzip();
+          
+        self.locals.push(defo());
+        let mut args = vec![];
+        for (n, ty) in a.iter().zip(b.iter()) {
+          let arg = Node::new(ty.clone(), Expr::Arg);
+          args.push(arg.clone());
+          self.insert_var(&Binding::Ident(n), arg);
+        }
+        let x = self.lower(x);
+        self.locals.pop();
+
         Node::new(
           None,
-          Expr::Lambda(a.into_boxed_slice(), b.into_boxed_slice(), x),
+          Expr::Lambda(args, a.into_boxed_slice(), b.into_boxed_slice(), x),
         )
       }
 
       ast::Expr::Block(b) => {
+        self.locals.push(defo());
         let b = self.lowerv(b);
+        self.locals.pop();
         Node::new(Some(Ty::Void), Expr::Block(b))
       }
 
@@ -1298,11 +1366,12 @@ impl Context {
 
       ast::Expr::For(v, x, b) => {
         self.locals.push(defo());
-        let x = self.lower(x);
-        let it = Node::new(None, Expr::Iter(x));
-        self.insert_var(v, it.clone());
-        let b = self.lower(b);
+          let x = self.lower(x);
+          let it = Node::new(None, Expr::Iter(x));
+          self.insert_var(v, it.clone());
+          let b = self.lower(b);
         self.locals.pop();
+
         Node::new(Some(Ty::Void), Expr::For(it, b))
       }
 
@@ -1461,7 +1530,7 @@ impl Func {
 }
 
 impl<A, B> Tree<A, B> {
-  fn visit<'a, Ret, F: Fn(&'a Tree<A, B>) -> Option<Ret>>(&'a self, f: F) -> Option<Ret> {
+  pub fn visit<'a, Ret, F: Fn(&'a Tree<A, B>) -> Option<Ret>>(&'a self, f: F) -> Option<Ret> {
     if let Some(dat) = f(self) {
       Some(dat)
     } else if let Some(up) = self.above {

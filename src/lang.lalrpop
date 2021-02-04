@@ -95,6 +95,9 @@ Statements: Expr = {
   Type,
   Extern,
   "alias" <Ty> <Ident> => Expr::Alias(<>),
+
+  <l:P<Expr>> <o:AssignOp> <r:P<Expr>> ";" => Expr::AssignOp(o,l,r),
+  <P<Expr>> "=" <P<Expr>> ";" => Expr::Assign(<>),
 }
 
 PushIdent: Sstr = Ident => (table.add_sym(&<>), <>).1;
@@ -176,17 +179,15 @@ Descope: () = => table.descope();
 Blockv: Vec<Expr> = Scope BlockL <Lang> BlockR Descope => <>;
 Block: Expr = Blockv => Expr::Block(<>);
 
-Lambdahead: Vec<(Sstr, Option<Ty>)> = ">" <(<PushIdent> <Ty?> ",")*>;
+Lambdahead: Vec<(Sstr, Option<Ty>)> = ">" <seq0<(<PushIdent> <Ty?>)>>;
+
 
 Expr: Expr  = {
   Logor,
   <P<Logor>> ".." <P<Logor>> => Expr::Range(<>),
-  Scope <Lambdahead> <P<Block>>    Descope => Expr::Lambda(<>),
+  //Scope <Lambdahead> <P<Block>>    Descope => Expr::Lambda(<>),
   Scope <Lambdahead> ":" <P<Expr>> Descope => Expr::Lambda(<>),
-  <l:P<Logor>> <o:AssignOp> <r:P<Expr>> => Expr::AssignOp(o,l,r),
-  <P<Logor>> "=" <P<Expr>> => Expr::Assign(<>),
-  "if" <P<Expr>> <P<Block>> "else" <P<Block>> => Expr::IfElse(<>),
-  "jmp" <P<Expr>> BlockL <seq1<(Scope <Pattern> "=>" <Expr> Descope)>> BlockR => Expr::Jmp(<>),
+  // "if" <P<Expr>> <P<Block>> "else" <P<Block>> => Expr::IfElse(<>),
 }
 
 #[inline]
