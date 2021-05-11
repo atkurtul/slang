@@ -1,7 +1,0 @@
-[
-  {
-    "directory": "/home/atil/repos/slang2",
-    "command": "/usr/bin/clang++ -std=c++20 /home/atil/repos/slang2/func.cpp",
-    "file": "/home/atil/repos/slang2/func.cpp"
-  }
-]
